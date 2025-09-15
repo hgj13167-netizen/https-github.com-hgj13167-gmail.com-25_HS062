@@ -1,0 +1,35 @@
+#include <Arduino_LSM9DS1.h>  // Nano 33 Sense Rev2 IMU 라이브러리
+
+#define THRESHOLD 4   // g 단위, 2.5g 이상 급격한 변화면 낙상으로 판단
+#define TX_BAUD 9600
+
+void setup() {
+  Serial.begin(9600);     // PC 모니터링용
+  Serial1.begin(TX_BAUD); // 다른 아두이노로 전송 (TX=Nano D1, RX=상대보드 RX핀)
+  
+  if (!IMU.begin()) {
+    Serial.println("IMU 초기화 실패!");
+    while (1);
+  }
+  Serial.println("IMU 시작 - 낙상 감지 대기 중...");
+}
+
+void loop() {
+  float x, y, z;
+
+  if (IMU.accelerationAvailable()) {
+    IMU.readAcceleration(x, y, z);
+
+    float magnitude = sqrt(x * x + y * y + z * z); // 가속도 크기 (g 단위)
+
+    if (magnitude > 3) {
+       Serial.println(magnitude);
+    }
+
+    if (magnitude > THRESHOLD) {
+      Serial.println("낙상 감지!");
+      Serial1.println("FALL");   // 다른 보드로 낙상 신호 전송
+      delay(1000);               // 중복 감지 방지
+    }
+  } 
+}
