@@ -29,9 +29,10 @@
 
 [기술 스택] 
 
-- 프론트엔드 : HTML, ,
-- 백엔드 : Arduino,
-- 데이터베이스 :
-- 클라우드 :
+- 프론트엔드 : HTML, inline css
+- 백엔드 : Arduino WIFI, Arduino BLE 33 SENS
+- AI/ML : Claude API
+- 데이터베이스 : mysql 5.7
+- 클라우드 : publicode server 활용
 - 배포 및 관리 : GitHUb Actions
 
