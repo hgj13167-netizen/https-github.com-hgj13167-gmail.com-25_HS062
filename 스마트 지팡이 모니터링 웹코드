@@ -1,0 +1,3483 @@
+<html lang="ko"><head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>실내위치안내 스마트 지팡이 시스템</title>
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #2c3e50, #3498db);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            font-weight: 300;
+        }
+
+        .header p {
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+
+        .status-panel {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            padding: 30px;
+        }
+
+        .card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.15);
+        }
+
+        .card-title {
+            font-size: 1.3em;
+            font-weight: bold;
+            margin-bottom: 15px;
+            color: #2c3e50;
+            border-bottom: 2px solid #ecf0f1;
+            padding-bottom: 10px;
+        }
+
+        .sensor-data {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin: 10px 0;
+        }
+
+        .sensor-label {
+            font-weight: 600;
+            color: #34495e;
+        }
+
+        .sensor-value {
+            font-size: 1.4em;
+            font-weight: bold;
+            color: #2980b9;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            margin-left: 10px;
+            animation: pulse 2s infinite;
+        }
+
+        .status-normal {
+            background-color: #27ae60;
+        }
+
+        .status-warning {
+            background-color: #f39c12;
+        }
+
+        .status-danger {
+            background-color: #e74c3c;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        .alert-message {
+            padding: 15px;
+            border-radius: 10px;
+            margin: 15px 0;
+            font-weight: bold;
+            text-align: center;
+            transition: all 0.3s ease;
+        }
+
+        .alert-normal {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .alert-fall {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+            animation: blink 1s infinite;
+        }
+
+        .alert-obstacle {
+            background-color: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+            animation: blink 1s infinite;
+        }
+
+        @keyframes blink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0.3; }
+        }
+
+        .connection-status {
+            text-align: center;
+            padding: 15px;
+            margin: 20px;
+            border-radius: 10px;
+            font-weight: bold;
+        }
+
+        .connected {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .disconnected {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .timestamp {
+            text-align: center;
+            color: #7f8c8d;
+            font-size: 0.9em;
+            margin-top: 20px;
+        }
+
+        .code-toggle {
+            background: rgba(255, 255, 255, 0.9);
+            margin: 20px;
+            padding: 15px;
+            border-radius: 10px;
+            border: 1px solid #ddd;
+        }
+
+        .code-toggle label {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+
+        .code-toggle input[type="checkbox"] {
+            margin-right: 10px;
+            transform: scale(1.2);
+        }
+
+        .arduino-code {
+            display: none;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 20px;
+            margin: 20px;
+            border-radius: 10px;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.5;
+            overflow-x: auto;
+            position: relative;
+        }
+
+        .arduino-code.show {
+            display: block;
+        }
+
+        .code-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #444;
+        }
+
+        .code-title {
+            color: #569cd6;
+            font-weight: bold;
+            font-size: 16px;
+        }
+
+        .copy-btn {
+            background: #0078d4;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: background 0.3s;
+        }
+
+        .copy-btn:hover {
+            background: #106ebe;
+        }
+
+        .copy-btn.copied {
+            background: #107c10;
+        }
+
+        .code-content {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🦯 스마트 지팡이 모니터링 시스템</h1>
+            <p>실시간 센서 데이터 및 안전 상태 모니터링</p>
+        </div>
+
+        <div class="code-toggle">
+            <label>
+                <input type="checkbox" id="codeToggle">
+                🔧 Arduino UNO R4 WIFI 코드 보기
+            </label>
+        </div>
+
+        <div class="arduino-code" id="arduinoCode">
+            <div class="code-header">
+                <div class="code-title">🔧 Arduino UNO R4 WIFI - 스마트 지팡이 시스템</div>
+                <button class="copy-btn" id="copyBtn">📋 복사</button>
+            </div>
+            <div class="code-content" id="codeContent"></div>
+        </div>
+
+        <div class="code-toggle">
+            <label>
+                <input type="checkbox" id="nanoCodeToggle">
+                📱 Arduino Nano 33 BLE 코드 보기
+            </label>
+        </div>
+
+        <div class="arduino-code" id="nanoArduinoCode">
+            <div class="code-header">
+                <div class="code-title">📱 Arduino Nano 33 BLE - 낙상 감지 시스템</div>
+                <button class="copy-btn" id="nanoCopyBtn">📋 복사</button>
+            </div>
+            <div class="code-content" id="nanoCodeContent"></div>
+        </div>
+
+        <div class="code-toggle">
+            <label>
+                <input type="checkbox" id="monitoringCodeToggle">
+                🦯 스마트 지팡이 모니터링 코드 보기
+            </label>
+        </div>
+
+        <div class="arduino-code" id="monitoringCode">
+            <div class="code-header">
+                <div class="code-title">🦯 스마트 지팡이 모니터링 시스템 - JavaScript</div>
+                <button class="copy-btn" id="monitoringCopyBtn">📋 복사</button>
+            </div>
+            <div class="code-content" id="monitoringCodeContent">// 스마트 지팡이 모니터링 시스템 - JavaScript Core Functions
+
+// MQTT 연결 및 메시지 처리
+const MQTT_TOPIC_SUB = 'SC_pub';
+let client;
+let isConnected = false;
+
+// 음성 알림 제어 변수
+let lastSpeechTime = 0;
+let lastSensorSpeech = 0;
+const speechCooldown = 10000; // 10초 간격
+
+// 앱 초기화 함수
+function initializeApp() {
+    // DOM 요소들 초기화
+    connectionStatus = document.getElementById('connectionStatus');
+    distance1 = document.getElementById('distance1');
+    distance2 = document.getElementById('distance2');
+    status1 = document.getElementById('status1');
+    status2 = document.getElementById('status2');
+    safetyStatus = document.getElementById('safetyStatus');
+    fallStatus = document.getElementById('fallStatus');
+    obstacleStatus = document.getElementById('obstacleStatus');
+    lastUpdate = document.getElementById('lastUpdate');
+
+    // MQTT 연결 설정
+    const clientId = 'webClient_' + Math.random().toString(16).substr(2, 8);
+    const isHttps = location.protocol === 'https:';
+    const mqttUrl = isHttps ? 'wss://pubcode2.iptime.org:39002' : 'ws://pubcode2.iptime.org:39001';
+    
+    try {
+        client = mqtt.connect(mqttUrl, {
+            clientId: clientId,
+            clean: true,
+            keepalive: 30,
+            connectTimeout: 15 * 1000,
+            reconnectPeriod: 5000,
+            protocolVersion: 4
+        });
+        setupMQTTEvents();
+    } catch (error) {
+        console.error('MQTT 클라이언트 생성 실패:', error);
+        updateConnectionStatus(false, 'MQTT 연결 실패');
+    }
+}
+
+// MQTT 메시지 처리 함수
+function processMessage(data) {
+    console.log('처리 중인 메시지:', data);
+    
+    // 낙상 감지 체크
+    if (data.includes('"event":"FALL"') || data === 'FALL') {
+        handleFallDetection();
+        return;
+    }
+    
+    // JSON 형태 데이터 파싱
+    try {
+        const jsonData = JSON.parse(data);
+        if (jsonData.event === 'FALL') {
+            handleFallDetection();
+            return;
+        }
+        if (jsonData.sensor1 !== undefined &amp;&amp; jsonData.sensor2 !== undefined) {
+            updateSensorDisplay(1, jsonData.sensor1);
+            updateSensorDisplay(2, jsonData.sensor2);
+            return;
+        }
+    } catch (e) {
+        // JSON이 아닌 경우 다른 파싱 방법 시도
+    }
+    
+    // 거리 데이터 파싱
+    if (data.includes('Distance Alert!')) {
+        handleDistanceAlert(data);
+        parseDistanceData(data);
+    } else if (data.includes('d1=') &amp;&amp; data.includes('d2=')) {
+        parseDistanceData(data);
+    } else if (data.includes('센서1') &amp;&amp; data.includes('센서2')) {
+        parseKoreanDistanceData(data);
+    }
+}
+
+// 음성 알림 함수 (Chrome 브라우저 호환)
+function speakMessage(message, priority = 'normal') {
+    const currentTime = Date.now();
+    
+    if (priority === 'high' || currentTime - lastSpeechTime &gt; speechCooldown) {
+        if ('speechSynthesis' in window) {
+            try {
+                window.speechSynthesis.cancel();
+                
+                const utterance = new SpeechSynthesisUtterance(message);
+                const voices = window.speechSynthesis.getVoices();
+                const koreanVoice = voices.find(voice =&gt; 
+                    voice.lang.includes('ko') || voice.lang.includes('KR')
+                );
+                
+                if (koreanVoice) {
+                    utterance.voice = koreanVoice;
+                    utterance.lang = koreanVoice.lang;
+                } else {
+                    utterance.lang = 'ko-KR';
+                }
+                
+                utterance.rate = 0.9;
+                utterance.pitch = 1.0;
+                utterance.volume = 1.0;
+                
+                window.speechSynthesis.speak(utterance);
+                lastSpeechTime = currentTime;
+                
+            } catch (error) {
+                console.error('음성 합성 오류:', error);
+                showTextAlert(message);
+            }
+        } else {
+            showTextAlert(message);
+        }
+    }
+}
+
+// 낙상 감지 처리
+function handleFallDetection() {
+    fallStatus.textContent = '🚨 낙상 감지됨!';
+    fallStatus.className = 'alert-message alert-fall';
+    safetyStatus.textContent = '🚨 응급 상황 발생!';
+    safetyStatus.className = 'alert-message alert-fall';
+
+    speakMessage('경고! 낙상이 감지되었습니다. 응급 상황입니다.', 'high');
+
+    setTimeout(() =&gt; {
+        fallStatus.textContent = '정상 상태';
+        fallStatus.className = 'alert-message alert-normal';
+        updateSafetyStatus();
+        speakMessage('낙상 경고가 해제되었습니다.');
+    }, 5000);
+}
+
+// 센서 표시 업데이트
+function updateSensorDisplay(sensorNum, distance) {
+    console.log(`센서${sensorNum} 업데이트: ${distance}cm`);
+    
+    if (sensorNum === 1) {
+        distance1.textContent = distance + ' cm';
+        updateSensorStatus(status1, distance);
+    } else if (sensorNum === 2) {
+        distance2.textContent = distance + ' cm';
+        updateSensorStatus(status2, distance);
+    }
+
+    // 장애물 감지 체크
+    if (distance &lt; 20) {
+        triggerObstacleAlert(sensorNum, distance);
+    }
+}
+
+// 장애물 경고 트리거
+function triggerObstacleAlert(sensorNum, distance) {
+    obstacleStatus.textContent = `⚠️ 센서${sensorNum}에서 장애물 감지! (${distance}cm)`;
+    obstacleStatus.className = 'alert-message alert-obstacle';
+    safetyStatus.textContent = '⚠️ 주의 필요';
+    safetyStatus.className = 'alert-message alert-obstacle';
+
+    speakMessage(`주의! 센서 ${sensorNum}에서 ${distance}센티미터 거리에 장애물이 감지되었습니다.`, 'high');
+
+    setTimeout(() =&gt; {
+        if (!obstacleStatus.className.includes('alert-obstacle')) return;
+        obstacleStatus.textContent = '경로 안전';
+        obstacleStatus.className = 'alert-message alert-normal';
+        updateSafetyStatus();
+        speakMessage('장애물이 해제되었습니다. 경로가 안전합니다.');
+    }, 3000);
+}</div>
+        </div>
+
+        <div class="code-toggle">
+            <label>
+                <input type="checkbox" id="htmlCodeToggle">
+                📄 index.html 전체 코드 보기
+            </label>
+        </div>
+
+        <div class="arduino-code" id="htmlCode">
+            <div class="code-header">
+                <div class="code-title">📄 index.html - 스마트 지팡이 모니터링 웹페이지</div>
+                <button class="copy-btn" id="htmlCopyBtn">📋 복사</button>
+            </div>
+            <div class="code-content" id="htmlCodeContent">&lt;html lang="ko"&gt;&lt;head&gt;
+    &lt;meta charset="UTF-8"&gt;
+    &lt;meta name="viewport" content="width=device-width, initial-scale=1.0"&gt;
+    &lt;title&gt;실내위치안내 스마트 지팡이 시스템&lt;/title&gt;
+    &lt;script src="https://unpkg.com/mqtt/dist/mqtt.min.js"&gt;&lt;/script&gt;
+    &lt;style&gt;
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #2c3e50, #3498db);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            font-weight: 300;
+        }
+
+        .header p {
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+
+        .status-panel {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            padding: 30px;
+        }
+
+        .card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.15);
+        }
+
+        .card-title {
+            font-size: 1.3em;
+            font-weight: bold;
+            margin-bottom: 15px;
+            color: #2c3e50;
+            border-bottom: 2px solid #ecf0f1;
+            padding-bottom: 10px;
+        }
+
+        .sensor-data {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin: 10px 0;
+        }
+
+        .sensor-label {
+            font-weight: 600;
+            color: #34495e;
+        }
+
+        .sensor-value {
+            font-size: 1.4em;
+            font-weight: bold;
+            color: #2980b9;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            margin-left: 10px;
+            animation: pulse 2s infinite;
+        }
+
+        .status-normal {
+            background-color: #27ae60;
+        }
+
+        .status-warning {
+            background-color: #f39c12;
+        }
+
+        .status-danger {
+            background-color: #e74c3c;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        .alert-message {
+            padding: 15px;
+            border-radius: 10px;
+            margin: 15px 0;
+            font-weight: bold;
+            text-align: center;
+            transition: all 0.3s ease;
+        }
+
+        .alert-normal {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .alert-fall {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+            animation: blink 1s infinite;
+        }
+
+        .alert-obstacle {
+            background-color: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+            animation: blink 1s infinite;
+        }
+
+        @keyframes blink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0.3; }
+        }
+
+        .connection-status {
+            text-align: center;
+            padding: 15px;
+            margin: 20px;
+            border-radius: 10px;
+            font-weight: bold;
+        }
+
+        .connected {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .disconnected {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .timestamp {
+            text-align: center;
+            color: #7f8c8d;
+            font-size: 0.9em;
+            margin-top: 20px;
+        }
+
+        .code-toggle {
+            background: rgba(255, 255, 255, 0.9);
+            margin: 20px;
+            padding: 15px;
+            border-radius: 10px;
+            border: 1px solid #ddd;
+        }
+
+        .code-toggle label {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+
+        .code-toggle input[type="checkbox"] {
+            margin-right: 10px;
+            transform: scale(1.2);
+        }
+
+        .arduino-code {
+            display: none;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 20px;
+            margin: 20px;
+            border-radius: 10px;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.5;
+            overflow-x: auto;
+            position: relative;
+        }
+
+        .arduino-code.show {
+            display: block;
+        }
+
+        .code-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #444;
+        }
+
+        .code-title {
+            color: #569cd6;
+            font-weight: bold;
+            font-size: 16px;
+        }
+
+        .copy-btn {
+            background: #0078d4;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: background 0.3s;
+        }
+
+        .copy-btn:hover {
+            background: #106ebe;
+        }
+
+        .copy-btn.copied {
+            background: #107c10;
+        }
+
+        .code-content {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+    &lt;/style&gt;
+&lt;/head&gt;
+&lt;body&gt;
+    &lt;div class="container"&gt;
+        &lt;div class="header"&gt;
+            &lt;h1&gt;🦯 스마트 지팡이 모니터링 시스템&lt;/h1&gt;
+            &lt;p&gt;실시간 센서 데이터 및 안전 상태 모니터링&lt;/p&gt;
+        &lt;/div&gt;
+
+        &lt;div class="code-toggle"&gt;
+            &lt;label&gt;
+                &lt;input type="checkbox" id="codeToggle"&gt;
+                🔧 Arduino UNO R4 WIFI 코드 보기
+            &lt;/label&gt;
+        &lt;/div&gt;
+
+        &lt;div class="arduino-code" id="arduinoCode"&gt;
+            &lt;div class="code-header"&gt;
+                &lt;div class="code-title"&gt;🔧 Arduino UNO R4 WIFI - 스마트 지팡이 시스템&lt;/div&gt;
+                &lt;button class="copy-btn" id="copyBtn"&gt;📋 복사&lt;/button&gt;
+            &lt;/div&gt;
+            &lt;div class="code-content" id="codeContent"&gt;&lt;/div&gt;
+        &lt;/div&gt;
+
+        &lt;div class="code-toggle"&gt;
+            &lt;label&gt;
+                &lt;input type="checkbox" id="nanoCodeToggle"&gt;
+                📱 Arduino Nano 33 BLE 코드 보기
+            &lt;/label&gt;
+        &lt;/div&gt;
+
+        &lt;div class="arduino-code" id="nanoArduinoCode"&gt;
+            &lt;div class="code-header"&gt;
+                &lt;div class="code-title"&gt;📱 Arduino Nano 33 BLE - 낙상 감지 시스템&lt;/div&gt;
+                &lt;button class="copy-btn" id="nanoCopyBtn"&gt;📋 복사&lt;/button&gt;
+            &lt;/div&gt;
+            &lt;div class="code-content" id="nanoCodeContent"&gt;&lt;/div&gt;
+        &lt;/div&gt;
+
+        &lt;div class="code-toggle"&gt;
+            &lt;label&gt;
+                &lt;input type="checkbox" id="monitoringCodeToggle"&gt;
+                🦯 스마트 지팡이 모니터링 코드 보기
+            &lt;/label&gt;
+        &lt;/div&gt;
+
+        &lt;div class="arduino-code" id="monitoringCode"&gt;
+            &lt;div class="code-header"&gt;
+                &lt;div class="code-title"&gt;🦯 스마트 지팡이 모니터링 시스템 - JavaScript&lt;/div&gt;
+                &lt;button class="copy-btn" id="monitoringCopyBtn"&gt;📋 복사&lt;/button&gt;
+            &lt;/div&gt;
+            &lt;div class="code-content" id="monitoringCodeContent"&gt;// 스마트 지팡이 모니터링 시스템 - JavaScript Core Functions
+
+// MQTT 연결 및 메시지 처리
+const MQTT_TOPIC_SUB = 'SC_pub';
+let client;
+let isConnected = false;
+
+// 음성 알림 제어 변수
+let lastSpeechTime = 0;
+let lastSensorSpeech = 0;
+const speechCooldown = 10000; // 10초 간격
+
+// 앱 초기화 함수
+function initializeApp() {
+    // DOM 요소들 초기화
+    connectionStatus = document.getElementById('connectionStatus');
+    distance1 = document.getElementById('distance1');
+    distance2 = document.getElementById('distance2');
+    status1 = document.getElementById('status1');
+    status2 = document.getElementById('status2');
+    safetyStatus = document.getElementById('safetyStatus');
+    fallStatus = document.getElementById('fallStatus');
+    obstacleStatus = document.getElementById('obstacleStatus');
+    lastUpdate = document.getElementById('lastUpdate');
+
+    // MQTT 연결 설정
+    const clientId = 'webClient_' + Math.random().toString(16).substr(2, 8);
+    const isHttps = location.protocol === 'https:';
+    const mqttUrl = isHttps ? 'wss://pubcode2.iptime.org:39002' : 'ws://pubcode2.iptime.org:39001';
+    
+    try {
+        client = mqtt.connect(mqttUrl, {
+            clientId: clientId,
+            clean: true,
+            keepalive: 30,
+            connectTimeout: 15 * 1000,
+            reconnectPeriod: 5000,
+            protocolVersion: 4
+        });
+        setupMQTTEvents();
+    } catch (error) {
+        console.error('MQTT 클라이언트 생성 실패:', error);
+        updateConnectionStatus(false, 'MQTT 연결 실패');
+    }
+}
+
+// MQTT 메시지 처리 함수
+function processMessage(data) {
+    console.log('처리 중인 메시지:', data);
+    
+    // 낙상 감지 체크
+    if (data.includes('"event":"FALL"') || data === 'FALL') {
+        handleFallDetection();
+        return;
+    }
+    
+    // JSON 형태 데이터 파싱
+    try {
+        const jsonData = JSON.parse(data);
+        if (jsonData.event === 'FALL') {
+            handleFallDetection();
+            return;
+        }
+        if (jsonData.sensor1 !== undefined &amp;amp;&amp;amp; jsonData.sensor2 !== undefined) {
+            updateSensorDisplay(1, jsonData.sensor1);
+            updateSensorDisplay(2, jsonData.sensor2);
+            return;
+        }
+    } catch (e) {
+        // JSON이 아닌 경우 다른 파싱 방법 시도
+    }
+    
+    // 거리 데이터 파싱
+    if (data.includes('Distance Alert!')) {
+        handleDistanceAlert(data);
+        parseDistanceData(data);
+    } else if (data.includes('d1=') &amp;amp;&amp;amp; data.includes('d2=')) {
+        parseDistanceData(data);
+    } else if (data.includes('센서1') &amp;amp;&amp;amp; data.includes('센서2')) {
+        parseKoreanDistanceData(data);
+    }
+}
+
+// 음성 알림 함수 (Chrome 브라우저 호환)
+function speakMessage(message, priority = 'normal') {
+    const currentTime = Date.now();
+    
+    if (priority === 'high' || currentTime - lastSpeechTime &amp;gt; speechCooldown) {
+        if ('speechSynthesis' in window) {
+            try {
+                window.speechSynthesis.cancel();
+                
+                const utterance = new SpeechSynthesisUtterance(message);
+                const voices = window.speechSynthesis.getVoices();
+                const koreanVoice = voices.find(voice =&amp;gt; 
+                    voice.lang.includes('ko') || voice.lang.includes('KR')
+                );
+                
+                if (koreanVoice) {
+                    utterance.voice = koreanVoice;
+                    utterance.lang = koreanVoice.lang;
+                } else {
+                    utterance.lang = 'ko-KR';
+                }
+                
+                utterance.rate = 0.9;
+                utterance.pitch = 1.0;
+                utterance.volume = 1.0;
+                
+                window.speechSynthesis.speak(utterance);
+                lastSpeechTime = currentTime;
+                
+            } catch (error) {
+                console.error('음성 합성 오류:', error);
+                showTextAlert(message);
+            }
+        } else {
+            showTextAlert(message);
+        }
+    }
+}
+
+// 낙상 감지 처리
+function handleFallDetection() {
+    fallStatus.textContent = '🚨 낙상 감지됨!';
+    fallStatus.className = 'alert-message alert-fall';
+    safetyStatus.textContent = '🚨 응급 상황 발생!';
+    safetyStatus.className = 'alert-message alert-fall';
+
+    speakMessage('경고! 낙상이 감지되었습니다. 응급 상황입니다.', 'high');
+
+    setTimeout(() =&amp;gt; {
+        fallStatus.textContent = '정상 상태';
+        fallStatus.className = 'alert-message alert-normal';
+        updateSafetyStatus();
+        speakMessage('낙상 경고가 해제되었습니다.');
+    }, 5000);
+}
+
+// 센서 표시 업데이트
+function updateSensorDisplay(sensorNum, distance) {
+    console.log(`센서${sensorNum} 업데이트: ${distance}cm`);
+    
+    if (sensorNum === 1) {
+        distance1.textContent = distance + ' cm';
+        updateSensorStatus(status1, distance);
+    } else if (sensorNum === 2) {
+        distance2.textContent = distance + ' cm';
+        updateSensorStatus(status2, distance);
+    }
+
+    // 장애물 감지 체크
+    if (distance &amp;lt; 20) {
+        triggerObstacleAlert(sensorNum, distance);
+    }
+}
+
+// 장애물 경고 트리거
+function triggerObstacleAlert(sensorNum, distance) {
+    obstacleStatus.textContent = `⚠️ 센서${sensorNum}에서 장애물 감지! (${distance}cm)`;
+    obstacleStatus.className = 'alert-message alert-obstacle';
+    safetyStatus.textContent = '⚠️ 주의 필요';
+    safetyStatus.className = 'alert-message alert-obstacle';
+
+    speakMessage(`주의! 센서 ${sensorNum}에서 ${distance}센티미터 거리에 장애물이 감지되었습니다.`, 'high');
+
+    setTimeout(() =&amp;gt; {
+        if (!obstacleStatus.className.includes('alert-obstacle')) return;
+        obstacleStatus.textContent = '경로 안전';
+        obstacleStatus.className = 'alert-message alert-normal';
+        updateSafetyStatus();
+        speakMessage('장애물이 해제되었습니다. 경로가 안전합니다.');
+    }, 3000);
+}&lt;/div&gt;
+        &lt;/div&gt;
+
+        &lt;div class="code-toggle"&gt;
+            &lt;label&gt;
+                &lt;input type="checkbox" id="htmlCodeToggle"&gt;
+                📄 index.html 전체 코드 보기
+            &lt;/label&gt;
+        &lt;/div&gt;
+
+        &lt;div class="arduino-code" id="htmlCode"&gt;
+            &lt;div class="code-header"&gt;
+                &lt;div class="code-title"&gt;📄 index.html - 스마트 지팡이 모니터링 웹페이지&lt;/div&gt;
+                &lt;button class="copy-btn" id="htmlCopyBtn"&gt;📋 복사&lt;/button&gt;
+            &lt;/div&gt;
+            &lt;div class="code-content" id="htmlCodeContent"&gt;&lt;/div&gt;
+        &lt;/div&gt;
+
+        &lt;div class="connection-status connected" id="connectionStatus"&gt;✅ MQTT 서버 연결됨&lt;/div&gt;
+
+        &lt;div style="text-align: center; margin: 20px;"&gt;
+            &lt;button onclick="testSpeech()" style="background: #007bff; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 16px;"&gt;
+                🔊 음성 테스트
+            &lt;/button&gt;
+            &lt;small style="display: block; margin-top: 5px; color: #666;"&gt;
+                음성이 안 들리면 이 버튼을 먼저 클릭하세요
+            &lt;/small&gt;
+        &lt;/div&gt;
+
+        &lt;div class="status-panel"&gt;
+            &lt;div class="card"&gt;
+                &lt;div class="card-title"&gt;📏 거리 센서 데이터&lt;/div&gt;
+                &lt;div class="sensor-data"&gt;
+                    &lt;span class="sensor-label"&gt;센서 1:&lt;/span&gt;
+                    &lt;span class="sensor-value" id="distance1"&gt;-- cm&lt;/span&gt;
+                    &lt;span class="status-indicator status-normal" id="status1"&gt;&lt;/span&gt;
+                &lt;/div&gt;
+                &lt;div class="sensor-data"&gt;
+                    &lt;span class="sensor-label"&gt;센서 2:&lt;/span&gt;
+                    &lt;span class="sensor-value" id="distance2"&gt;-- cm&lt;/span&gt;
+                    &lt;span class="status-indicator status-normal" id="status2"&gt;&lt;/span&gt;
+                &lt;/div&gt;
+            &lt;/div&gt;
+
+            &lt;div class="card"&gt;
+                &lt;div class="card-title"&gt;🚨 안전 상태&lt;/div&gt;
+                &lt;div class="alert-message alert-normal" id="safetyStatus"&gt;
+                    시스템 정상 작동 중
+                &lt;/div&gt;
+            &lt;/div&gt;
+
+            &lt;div class="card"&gt;
+                &lt;div class="card-title"&gt;⚠️ 낙상 감지&lt;/div&gt;
+                &lt;div class="alert-message alert-normal" id="fallStatus"&gt;
+                    정상 상태
+                &lt;/div&gt;
+            &lt;/div&gt;
+
+            &lt;div class="card"&gt;
+                &lt;div class="card-title"&gt;🚧 장애물 감지&lt;/div&gt;
+                &lt;div class="alert-message alert-normal" id="obstacleStatus"&gt;
+                    경로 안전
+                &lt;/div&gt;
+            &lt;/div&gt;
+        &lt;/div&gt;
+
+        &lt;div class="timestamp" id="lastUpdate"&gt;
+            마지막 업데이트: --
+        &lt;/div&gt;
+    &lt;/div&gt;
+
+    &lt;script&gt;
+        const MQTT_TOPIC_SUB = 'SC_pub'; // 아두이노에서 publish하는 토픽을 구독
+
+        let client;
+        let isConnected = false;
+
+        // DOM 요소들
+        let connectionStatus, distance1, distance2, status1, status2;
+        let safetyStatus, fallStatus, obstacleStatus, lastUpdate;
+
+        // 음성 알림 제어 변수
+        let lastSpeechTime = 0;
+        let lastSensorSpeech = 0;
+        const speechCooldown = 10000; // 10초 간격으로 음성 알림 제한
+
+        // 페이지 로드 후 DOM 요소 초기화 및 MQTT 연결
+        function initializeApp() {
+            // DOM 요소들 초기화
+            connectionStatus = document.getElementById('connectionStatus');
+            distance1 = document.getElementById('distance1');
+            distance2 = document.getElementById('distance2');
+            status1 = document.getElementById('status1');
+            status2 = document.getElementById('status2');
+            safetyStatus = document.getElementById('safetyStatus');
+            fallStatus = document.getElementById('fallStatus');
+            obstacleStatus = document.getElementById('obstacleStatus');
+            lastUpdate = document.getElementById('lastUpdate');
+
+            // MQTT 연결 (HTTPS/HTTP 자동 감지)
+            const clientId = 'webClient_' + Math.random().toString(16).substr(2, 8);
+            const isHttps = location.protocol === 'https:';
+            const mqttUrl = isHttps ? 'wss://pubcode2.iptime.org:39002' : 'ws://pubcode2.iptime.org:39001';
+            
+            console.log('🔌 MQTT 연결 시도:', clientId);
+            console.log('현재 프로토콜:', location.protocol);
+            console.log('서버 주소:', mqttUrl);
+            
+            try {
+                client = mqtt.connect(mqttUrl, {
+                    clientId: clientId,
+                    clean: true,
+                    keepalive: 30,
+                    connectTimeout: 15 * 1000,
+                    reconnectPeriod: 5000,
+                    protocolVersion: 4,
+                    username: undefined,
+                    password: undefined
+                });
+                
+                console.log('📡 MQTT 클라이언트 생성 완료');
+            } catch (error) {
+                console.error('❌ MQTT 클라이언트 생성 실패:', error);
+                if (isHttps) {
+                    console.warn('⚠️ HTTPS에서 WSS 연결 실패 - HTTP로 접속해보세요');
+                    console.log('🔗 HTTP 주소: http://poly.pubcode.kr/B03/index.html');
+                    updateConnectionStatus(false, '❌ WSS 연결 실패 - HTTP로 접속하세요');
+                } else {
+                    updateConnectionStatus(false, '클라이언트 생성 실패');
+                }
+                return;
+            }
+
+            setupMQTTEvents();
+        }
+
+        // MQTT 이벤트 설정
+        function setupMQTTEvents() {
+            console.log('🔧 MQTT 이벤트 핸들러 설정 중...');
+            console.log('브라우저:', navigator.userAgent);
+            
+            client.on('connect', () =&gt; {
+                console.log('✅ WebSocket MQTT 연결 성공!');
+                isConnected = true;
+                updateConnectionStatus(true);
+                client.subscribe(MQTT_TOPIC_SUB, (err) =&gt; {
+                    if (err) {
+                        console.error('❌ 토픽 구독 실패:', err);
+                    } else {
+                        console.log('📡 토픽 구독 성공:', MQTT_TOPIC_SUB);
+                        // 음성 알림
+                        speakMessage('스마트 지팡이 시스템이 연결되었습니다. 모니터링을 시작합니다.');
+                    }
+                });
+            });
+
+            client.on('message', (topic, message) =&gt; {
+                const data = message.toString();
+                console.log('📩 수신된 메시지:', data);
+                processMessage(data);
+                updateTimestamp();
+            });
+
+            client.on('error', (error) =&gt; {
+                console.error('❌ MQTT 연결 오류:', error);
+                console.error('오류 상세:', error.message);
+                isConnected = false;
+                updateConnectionStatus(false);
+            });
+
+            client.on('offline', () =&gt; {
+                console.log('📴 MQTT 오프라인 상태');
+                isConnected = false;
+                updateConnectionStatus(false);
+            });
+
+            client.on('close', () =&gt; {
+                console.log('🔌 MQTT 연결 종료');
+                isConnected = false;
+                updateConnectionStatus(false);
+            });
+
+            client.on('reconnect', () =&gt; {
+                console.log('🔄 MQTT 재연결 시도 중...');
+            });
+
+            client.on('disconnect', () =&gt; {
+                console.log('⚠️ MQTT 연결 해제');
+                isConnected = false;
+                updateConnectionStatus(false);
+            });
+
+            // 연결 시도 타임아웃 설정 (5초)
+            setTimeout(() =&gt; {
+                if (!isConnected) {
+                    console.warn('⏰ MQTT 연결 타임아웃 (5초)');
+                    if (location.protocol === 'https:') {
+                        console.log('🚨 HTTPS에서 WSS 연결 실패!');
+                        console.log('💡 해결 방법: HTTP로 접속하세요');
+                        console.log('🔗 HTTP 주소: http://poly.pubcode.kr/B03/index.html');
+                        updateConnectionStatus(false, '❌ WSS 서버 없음 - HTTP로 접속 필요');
+                        
+                        // HTTP 링크를 화면에 표시
+                        showHttpLink();
+                    } else {
+                        console.log('🔧 연결 문제 해결 방법:');
+                        console.log('1. 네트워크 연결 확인');
+                        console.log('2. 방화벽 설정 확인');
+                        console.log('3. MQTT 서버 상태 확인');
+                        updateConnectionStatus(false, '연결 타임아웃 - 네트워크를 확인하세요');
+                    }
+                }
+            }, 5000);
+        }
+
+        // 연결 상태 업데이트
+        function updateConnectionStatus(connected, customMessage = null) {
+            if (connected) {
+                connectionStatus.textContent = '✅ MQTT 서버 연결됨';
+                connectionStatus.className = 'connection-status connected';
+            } else {
+                const message = customMessage || '❌ MQTT 서버 연결 실패';
+                connectionStatus.textContent = message;
+                connectionStatus.className = 'connection-status disconnected';
+            }
+        }
+
+        // 메시지 처리
+        function processMessage(data) {
+            console.log('처리 중인 메시지:', data);
+            
+            // JSON 형태 낙상 신호 체크
+            if (data.includes('"event":"FALL"') || data.includes("'event':'FALL'")) {
+                handleFallDetection();
+                return;
+            }
+            
+            // 기존 문자열 형태 낙상 신호 체크
+            if (data === 'FALL') {
+                handleFallDetection();
+                return;
+            }
+            
+            // JSON 형태 데이터 파싱 시도
+            try {
+                const jsonData = JSON.parse(data);
+                if (jsonData.event === 'FALL') {
+                    handleFallDetection();
+                    return;
+                }
+                if (jsonData.sensor1 !== undefined &amp;&amp; jsonData.sensor2 !== undefined) {
+                    updateSensorDisplay(1, jsonData.sensor1);
+                    updateSensorDisplay(2, jsonData.sensor2);
+                    return;
+                }
+            } catch (e) {
+                // JSON이 아닌 경우 계속 진행
+            }
+            
+            if (data.includes('Distance Alert!')) {
+                handleDistanceAlert(data);
+                parseDistanceData(data); // Distance Alert에서도 거리 데이터 파싱
+            } else if (data.includes('d1=') &amp;&amp; data.includes('d2=')) {
+                parseDistanceData(data);
+            } else if (data.includes('센서1') &amp;&amp; data.includes('센서2')) {
+                // "센서1 거리: 25 cm | 센서2 거리: 30 cm" 형태 파싱
+                parseKoreanDistanceData(data);
+            } else if (data.includes('거리:')) {
+                // 개별 센서 데이터 파싱
+                parseIndividualSensorData(data);
+            } else {
+                // 기타 숫자 데이터나 JSON 형태 시도
+                tryParseNumericData(data);
+            }
+        }
+
+        // 음성 알림 함수 (크롬 HTTP 호환성 개선)
+        function speakMessage(message, priority = 'normal') {
+            const currentTime = Date.now();
+            
+            // 우선순위가 높은 경우 (낙상, 장애물) 즉시 재생
+            if (priority === 'high' || currentTime - lastSpeechTime &gt; speechCooldown) {
+                if ('speechSynthesis' in window) {
+                    try {
+                        // 기존 음성 정지
+                        window.speechSynthesis.cancel();
+                        
+                        // 크롬에서 음성 목록 로드 대기
+                        const voices = window.speechSynthesis.getVoices();
+                        
+                        const utterance = new SpeechSynthesisUtterance(message);
+                        
+                        // 한국어 음성 찾기
+                        const koreanVoice = voices.find(voice =&gt; 
+                            voice.lang.includes('ko') || voice.lang.includes('KR')
+                        );
+                        
+                        if (koreanVoice) {
+                            utterance.voice = koreanVoice;
+                            utterance.lang = koreanVoice.lang;
+                        } else {
+                            utterance.lang = 'ko-KR';
+                        }
+                        
+                        utterance.rate = 0.9;
+                        utterance.pitch = 1.0;
+                        utterance.volume = 1.0;
+                        
+                        // 크롬 HTTP에서 사용자 상호작용 없이 재생 시도
+                        const playPromise = new Promise((resolve) =&gt; {
+                            utterance.onstart = () =&gt; {
+                                console.log('🔊 음성 재생 시작:', message);
+                                resolve();
+                            };
+                            utterance.onerror = (event) =&gt; {
+                                console.warn('🔇 음성 재생 실패:', event.error);
+                                console.log('💡 해결 방법: 페이지를 클릭한 후 다시 시도하세요.');
+                                resolve();
+                            };
+                            utterance.onend = () =&gt; {
+                                console.log('🔊 음성 재생 완료');
+                            };
+                        });
+                        
+                        window.speechSynthesis.speak(utterance);
+                        console.log('🔊 음성 알림 요청:', message);
+                        
+                        lastSpeechTime = currentTime;
+                        
+                    } catch (error) {
+                        console.error('🔇 음성 합성 오류:', error);
+                        showTextAlert(message); // 대체 텍스트 알림
+                    }
+                } else {
+                    console.warn('🔇 이 브라우저는 음성 합성을 지원하지 않습니다.');
+                    showTextAlert(message); // 대체 텍스트 알림
+                }
+            } else {
+                console.log('🔇 음성 알림 스킵 (쿨다운):', message);
+            }
+        }
+
+        // 음성이 안 될 때 대체 텍스트 알림
+        function showTextAlert(message) {
+            const alertDiv = document.createElement('div');
+            alertDiv.style.cssText = `
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                background: #ff4444;
+                color: white;
+                padding: 20px;
+                border-radius: 10px;
+                font-size: 18px;
+                font-weight: bold;
+                z-index: 2000;
+                box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+                max-width: 80%;
+                text-align: center;
+            `;
+            alertDiv.textContent = message;
+            document.body.appendChild(alertDiv);
+            
+            // 3초 후 제거
+            setTimeout(() =&gt; {
+                if (alertDiv.parentElement) {
+                    alertDiv.remove();
+                }
+            }, 3000);
+        }
+
+        // 음성 권한 요청 및 초기화
+        function initializeSpeech() {
+            if ('speechSynthesis' in window) {
+                // 크롬에서 음성 목록 로드 대기
+                const loadVoices = () =&gt; {
+                    const voices = window.speechSynthesis.getVoices();
+                    console.log('🎤 사용 가능한 음성:', voices.length, '개');
+                    
+                    const koreanVoices = voices.filter(voice =&gt; 
+                        voice.lang.includes('ko') || voice.lang.includes('KR')
+                    );
+                    console.log('🇰🇷 한국어 음성:', koreanVoices.length, '개');
+                    
+                    if (koreanVoices.length &gt; 0) {
+                        console.log('✅ 한국어 음성 사용 가능');
+                    } else {
+                        console.warn('⚠️ 한국어 음성이 없어 기본 음성을 사용합니다.');
+                    }
+                };
+
+                // 음성 목록이 로드되면 실행
+                if (window.speechSynthesis.getVoices().length &gt; 0) {
+                    loadVoices();
+                } else {
+                    window.speechSynthesis.onvoiceschanged = loadVoices;
+                }
+                
+                // 사용자 상호작용으로 음성 권한 활성화
+                document.addEventListener('click', function enableSpeech() {
+                    const testUtterance = new SpeechSynthesisUtterance('');
+                    window.speechSynthesis.speak(testUtterance);
+                    window.speechSynthesis.cancel();
+                    console.log('🔊 음성 권한 활성화됨');
+                    document.removeEventListener('click', enableSpeech);
+                }, { once: true });
+            }
+        }
+
+        // 낙상 감지 처리
+        function handleFallDetection() {
+            fallStatus.textContent = '🚨 낙상 감지됨!';
+            fallStatus.className = 'alert-message alert-fall';
+            safetyStatus.textContent = '🚨 응급 상황 발생!';
+            safetyStatus.className = 'alert-message alert-fall';
+
+            // 음성 알림 (높은 우선순위)
+            speakMessage('경고! 낙상이 감지되었습니다. 응급 상황입니다.', 'high');
+
+            // 5초 후 정상 상태로 복귀
+            setTimeout(() =&gt; {
+                fallStatus.textContent = '정상 상태';
+                fallStatus.className = 'alert-message alert-normal';
+                updateSafetyStatus();
+                speakMessage('낙상 경고가 해제되었습니다.');
+            }, 5000);
+        }
+
+        // 거리 경고 처리
+        function handleDistanceAlert(data) {
+            obstacleStatus.textContent = '⚠️ 장애물 감지! (20cm 미만)';
+            obstacleStatus.className = 'alert-message alert-obstacle';
+            safetyStatus.textContent = '⚠️ 주의 필요';
+            safetyStatus.className = 'alert-message alert-obstacle';
+
+            // 음성 알림 (높은 우선순위)
+            speakMessage('주의! 장애물이 감지되었습니다. 경로를 확인하세요.', 'high');
+
+            // 3초 후 정상 상태로 복귀
+            setTimeout(() =&gt; {
+                obstacleStatus.textContent = '경로 안전';
+                obstacleStatus.className = 'alert-message alert-normal';
+                updateSafetyStatus();
+                speakMessage('장애물 경고가 해제되었습니다. 경로가 안전합니다.');
+            }, 3000);
+        }
+
+        // 거리 데이터 파싱 (d1=25, d2=30 형태)
+        function parseDistanceData(data) {
+            const d1Match = data.match(/d1=(\d+)/);
+            const d2Match = data.match(/d2=(\d+)/);
+
+            if (d1Match) {
+                const dist1 = parseInt(d1Match[1]);
+                updateSensorDisplay(1, dist1);
+            }
+
+            if (d2Match) {
+                const dist2 = parseInt(d2Match[1]);
+                updateSensorDisplay(2, dist2);
+            }
+        }
+
+        // 한국어 거리 데이터 파싱 ("센서1 거리: 25 cm | 센서2 거리: 30 cm" 형태)
+        function parseKoreanDistanceData(data) {
+            const sensor1Match = data.match(/센서1\s*거리:\s*(\d+)\s*cm/);
+            const sensor2Match = data.match(/센서2\s*거리:\s*(\d+)\s*cm/);
+
+            if (sensor1Match) {
+                const dist1 = parseInt(sensor1Match[1]);
+                updateSensorDisplay(1, dist1);
+            }
+
+            if (sensor2Match) {
+                const dist2 = parseInt(sensor2Match[1]);
+                updateSensorDisplay(2, dist2);
+            }
+        }
+
+        // 개별 센서 데이터 파싱
+        function parseIndividualSensorData(data) {
+            // "거리: 25" 또는 "Distance: 25" 형태
+            const distMatch = data.match(/거리:\s*(\d+)/);
+            if (distMatch) {
+                const distance = parseInt(distMatch[1]);
+                // 마지막으로 업데이트할 센서 결정 (교대로 업데이트)
+                const currentTime = Date.now();
+                const sensorNum = Math.floor(currentTime / 1000) % 2 + 1;
+                updateSensorDisplay(sensorNum, distance);
+            }
+        }
+
+        // 숫자 데이터 시도 파싱
+        function tryParseNumericData(data) {
+            // JSON 형태 시도
+            try {
+                const jsonData = JSON.parse(data);
+                if (jsonData.sensor1 !== undefined) {
+                    updateSensorDisplay(1, jsonData.sensor1);
+                }
+                if (jsonData.sensor2 !== undefined) {
+                    updateSensorDisplay(2, jsonData.sensor2);
+                }
+                return;
+            } catch (e) {
+                // JSON이 아님
+            }
+
+            // 쉼표로 구분된 두 숫자 시도 "25,30"
+            const csvMatch = data.match(/^(\d+),(\d+)$/);
+            if (csvMatch) {
+                updateSensorDisplay(1, parseInt(csvMatch[1]));
+                updateSensorDisplay(2, parseInt(csvMatch[2]));
+                return;
+            }
+
+            // 단순 숫자 하나만 있는 경우
+            const numMatch = data.match(/^\d+$/);
+            if (numMatch) {
+                const distance = parseInt(data);
+                // 교대로 센서에 할당
+                const sensorNum = Math.floor(Date.now() / 1000) % 2 + 1;
+                updateSensorDisplay(sensorNum, distance);
+            }
+        }
+
+        // 센서 표시 업데이트 (통합 함수)
+        function updateSensorDisplay(sensorNum, distance) {
+            console.log(`센서${sensorNum} 업데이트: ${distance}cm`);
+            
+            if (sensorNum === 1) {
+                distance1.textContent = distance + ' cm';
+                updateSensorStatus(status1, distance);
+            } else if (sensorNum === 2) {
+                distance2.textContent = distance + ' cm';
+                updateSensorStatus(status2, distance);
+            }
+
+            // 장애물 감지 체크
+            if (distance &lt; 20) {
+                triggerObstacleAlert(sensorNum, distance);
+            } else {
+                // 정상 상태일 때 30초마다 상태 알림
+                const currentTime = Date.now();
+                if (currentTime - lastSensorSpeech &gt; 30000) {
+                    speakMessage(`센서가 정상 작동 중입니다. 전방 경로가 안전합니다.`);
+                    lastSensorSpeech = currentTime;
+                }
+            }
+        }
+
+        // 장애물 경고 트리거
+        function triggerObstacleAlert(sensorNum, distance) {
+            console.log(`장애물 감지! 센서${sensorNum}: ${distance}cm`);
+            obstacleStatus.textContent = `⚠️ 센서${sensorNum}에서 장애물 감지! (${distance}cm)`;
+            obstacleStatus.className = 'alert-message alert-obstacle';
+            safetyStatus.textContent = '⚠️ 주의 필요';
+            safetyStatus.className = 'alert-message alert-obstacle';
+
+            // 음성 알림 (센서별 구분, 높은 우선순위)
+            speakMessage(`주의! 센서 ${sensorNum}에서 ${distance}센티미터 거리에 장애물이 감지되었습니다.`, 'high');
+
+            // 3초 후 정상 상태로 복귀
+            setTimeout(() =&gt; {
+                if (!obstacleStatus.className.includes('alert-obstacle')) return;
+                obstacleStatus.textContent = '경로 안전';
+                obstacleStatus.className = 'alert-message alert-normal';
+                updateSafetyStatus();
+                speakMessage('장애물이 해제되었습니다. 경로가 안전합니다.');
+            }, 3000);
+        }
+
+        // 센서 상태 업데이트
+        function updateSensorStatus(statusElement, distance) {
+            if (distance &lt; 20) {
+                statusElement.className = 'status-indicator status-danger';
+            } else if (distance &lt; 50) {
+                statusElement.className = 'status-indicator status-warning';
+            } else {
+                statusElement.className = 'status-indicator status-normal';
+            }
+        }
+
+        // 전체 안전 상태 업데이트
+        function updateSafetyStatus() {
+            if (fallStatus.className.includes('alert-fall') || 
+                obstacleStatus.className.includes('alert-obstacle')) {
+                return; // 이미 경고 상태면 변경하지 않음
+            }
+
+            safetyStatus.textContent = '✅ 시스템 정상 작동 중';
+            safetyStatus.className = 'alert-message alert-normal';
+        }
+
+        // 타임스탬프 업데이트
+        function updateTimestamp() {
+            const now = new Date();
+            lastUpdate.textContent = `마지막 업데이트: ${now.toLocaleString('ko-KR')}`;
+        }
+
+        // HTTP 링크 표시
+        function showHttpLink() {
+            const linkDiv = document.createElement('div');
+            linkDiv.style.cssText = `
+                position: fixed;
+                top: 20px;
+                left: 50%;
+                transform: translateX(-50%);
+                background: #dc3545;
+                color: white;
+                padding: 15px 20px;
+                border-radius: 10px;
+                box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+                z-index: 1000;
+                text-align: center;
+                font-weight: bold;
+            `;
+            linkDiv.innerHTML = `
+                🚨 HTTPS에서 MQTT 연결 불가&lt;br&gt;
+                &lt;a href="http://poly.pubcode.kr/B03/index.html" 
+                   style="color: #fff3cd; text-decoration: underline;"&gt;
+                   HTTP 버전으로 이동하기
+                &lt;/a&gt;
+                &lt;button onclick="this.parentElement.remove()" 
+                        style="margin-left: 10px; background: none; border: 1px solid white; color: white; padding: 5px 10px; border-radius: 5px; cursor: pointer;"&gt;
+                   닫기
+                &lt;/button&gt;
+            `;
+            document.body.appendChild(linkDiv);
+            
+            // 10초 후 자동으로 제거
+            setTimeout(() =&gt; {
+                if (linkDiv.parentElement) {
+                    linkDiv.remove();
+                }
+            }, 10000);
+        }
+
+        // Arduino UNO R4 WIFI 코드 (최신 업데이트)
+        const arduinoCode = `#include &lt;Arduino.h&gt;
+#include &lt;WiFiS3.h&gt;         // UNO R4 WiFi 용
+#include &lt;PubSubClient.h&gt;   // MQTT 라이브러리
+
+#define RX_BAUD 9600
+
+// WiFi 정보
+const char* ssid = "SmartCenter 2.4G";
+const char* password = "12345678";
+
+// MQTT 서버 정보
+const char* mqtt_server = "pubcode2.iptime.org";
+const int mqtt_port = 31883;
+const char* mqtt_topic_sub = "SC_sub";
+const char* mqtt_topic_pub = "SC_pub";
+
+WiFiClient espClient;
+PubSubClient client(espClient);
+
+// HC-SR04 센서1, 센서2 핀
+#define TRIG1 5
+#define ECHO1 4
+#define TRIG2 2
+#define ECHO2 3
+
+// 진동 모터
+#define VIBRATION_MOTOR 8
+bool vibrationOn = false;
+
+// 버저
+#define BUZZER_PIN 9
+
+// 거리센서 값 주기적 전송용
+unsigned long lastSendTime = 0;
+const unsigned long sendInterval = 1000; // 1초마다 전송
+
+// 음계 정의 (슈퍼마리오 테마용)
+#define NOTE_E4 330
+#define NOTE_F4 349
+#define NOTE_G4 392
+#define NOTE_A4 440
+#define NOTE_AS4 466
+#define NOTE_B4 494
+#define NOTE_C5 523
+#define NOTE_D5 587
+#define NOTE_E5 659
+#define NOTE_F5 698
+#define NOTE_G5 784
+#define NOTE_A5 880
+
+// 슈퍼마리오 테마 (짧은 버전)
+int marioMelody[] = {
+  NOTE_E5, NOTE_E5, 0, NOTE_E5,
+  0, NOTE_C5, NOTE_E5, 0,
+  NOTE_G5, 0, 0,  0,
+  NOTE_G4, 0, 0, 0,
+
+  NOTE_C5, 0, 0, NOTE_G4,
+  0, 0, NOTE_E4, 0,
+  0, NOTE_A4, 0, NOTE_B4,
+  0, NOTE_AS4, NOTE_A4, 0,
+
+  NOTE_G4, NOTE_E5, NOTE_G5,
+  NOTE_A5, 0, NOTE_F5, NOTE_G5,
+  0, NOTE_E5, 0, NOTE_C5,
+  NOTE_D5, NOTE_B4, 0, 0
+};
+
+int marioDurations[] = {
+  150, 150, 150, 150,
+  150, 150, 150, 150,
+  150, 150, 150, 150,
+  150, 150, 150, 150,
+
+  150, 150, 150, 150,
+  150, 150, 150, 150,
+  150, 150, 150, 150,
+  150, 150, 150, 150,
+
+  150, 150, 150,
+  150, 150, 150, 150,
+  150, 150, 150, 150,
+  150, 150, 150, 150
+};
+
+int marioLength = sizeof(marioMelody) / sizeof(int);
+
+// 초음파 거리 측정 함수
+long getDistance(int trigPin, int echoPin) {
+  digitalWrite(trigPin, LOW);
+  delayMicroseconds(2);
+  digitalWrite(trigPin, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(trigPin, LOW);
+
+  long duration = pulseIn(echoPin, HIGH, 20000); // 타임아웃 20ms
+  if (duration == 0) return 999; // 측정 실패시 큰 값 반환
+  long distance = duration * 0.034 / 2;  // cm
+  return distance;
+}
+
+// 슈퍼마리오 멜로디 연주
+void playMario() {
+  for (int i = 0; i &lt; marioLength; i++) {
+    int noteDuration = marioDurations[i];
+    if (marioMelody[i] == 0) {
+      noTone(BUZZER_PIN);
+    } else {
+      tone(BUZZER_PIN, marioMelody[i], noteDuration);
+    }
+    delay(noteDuration * 1.3);
+  }
+  noTone(BUZZER_PIN);
+}
+
+// MQTT 재연결
+void reconnect() {
+  while (!client.connected()) {
+    Serial.print("MQTT 연결 시도...");
+    if (client.connect("ArduinoWiFiClient")) {
+      Serial.println("연결됨");
+      client.subscribe(mqtt_topic_sub);
+    } else {
+      Serial.print("실패, rc=");
+      Serial.print(client.state());
+      Serial.println(" 5초 후 재시도");
+      delay(5000);
+    }
+  }
+}
+
+void setup() {
+  Serial.begin(9600);
+
+  // 초음파 핀 모드 설정
+  pinMode(TRIG1, OUTPUT);
+  pinMode(ECHO1, INPUT);
+  pinMode(TRIG2, OUTPUT);
+  pinMode(ECHO2, INPUT);
+
+  // 진동모터 + 버저 핀
+  pinMode(VIBRATION_MOTOR, OUTPUT);
+  pinMode(BUZZER_PIN, OUTPUT);
+  digitalWrite(VIBRATION_MOTOR, LOW);
+
+  Serial1.begin(RX_BAUD); // Nano 33 TX ↔ WiFi RX 연결
+  delay(2000);
+
+  // WiFi 연결
+  Serial.print("WiFi 연결 중: ");
+  Serial.println(ssid);
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(1000);
+    Serial.print(".");
+  }
+  Serial.println("\nWiFi 연결 성공!");
+  Serial.print("IP 주소: ");
+  Serial.println(WiFi.localIP());
+
+  // MQTT 설정
+  client.setServer(mqtt_server, mqtt_port);
+
+  Serial.println("HC-SR04 / Vibration Motor / Buzzer (Super Mario) 시작");
+  Serial.println("WiFi 보드 - 낙상 신호 수신 대기 중...");
+}
+
+void loop() {
+  if (!client.connected()) {
+    reconnect();
+  }
+  client.loop();
+
+  // 초음파 센서 값 읽기
+  long dist1 = getDistance(TRIG1, ECHO1);
+  long dist2 = getDistance(TRIG2, ECHO2);
+
+  Serial.print("센서1 거리: ");
+  Serial.print(dist1);
+  Serial.print(" cm | 센서2 거리: ");
+  Serial.print(dist2);
+  Serial.println(" cm");
+
+  // 주기적으로 거리값 MQTT 전송
+  unsigned long now = millis();
+  if (now - lastSendTime &gt; sendInterval) {
+    lastSendTime = now;
+    char msg[100];
+    sprintf(msg, "{\\"sensor1\\":%ld, \\"sensor2\\":%ld}", dist1, dist2);
+    client.publish(mqtt_topic_pub, msg);
+    Serial.print("MQTT 전송: ");
+    Serial.println(msg);
+  }
+
+  // 낙상 신호 수신 처리
+  if (Serial1.available()) {
+    String data = Serial1.readStringUntil('\\n');
+    data.trim();
+    Serial.println(data);
+    if (data == "FALL") {
+      Serial.println("&gt;&gt;&gt; 낙상 신호 수신됨!");
+      client.publish(mqtt_topic_pub, "{\\"event\\":\\"FALL\\"}");
+    }
+  }
+
+  // ===== 거리 조건으로 자동 제어 =====
+  if (dist1 &lt; 20 || dist2 &lt; 20) {
+    if (!vibrationOn) {
+      vibrationOn = true;
+      Serial.println("거리 &lt; 20cm → 진동모터 ON (1초) + 마리오 테마");
+      digitalWrite(VIBRATION_MOTOR, HIGH);
+      delay(1000);
+      digitalWrite(VIBRATION_MOTOR, LOW);
+
+      // 즉시 MQTT 경고 전송
+      char alertMsg[100];
+      sprintf(alertMsg, "{\\"alert\\":\\"distance&lt;20\\", \\"sensor1\\":%ld, \\"sensor2\\":%ld}", dist1, dist2);
+      client.publish(mqtt_topic_pub, alertMsg);
+      
+      playMario();
+    }
+  } else {
+    if (vibrationOn) {
+      vibrationOn = false;
+      Serial.println("거리 &gt;= 20cm → 진동모터 OFF + 버저 OFF");
+      digitalWrite(VIBRATION_MOTOR, LOW);
+      noTone(BUZZER_PIN);
+    }
+  }
+
+  delay(300);
+}`;
+
+        // 코드 토글 기능
+        function toggleCodeDisplay() {
+            const codeToggle = document.getElementById('codeToggle');
+            const arduinoCodeDiv = document.getElementById('arduinoCode');
+            const codeContent = document.getElementById('codeContent');
+
+            if (codeToggle.checked) {
+                codeContent.textContent = arduinoCode;
+                arduinoCodeDiv.classList.add('show');
+            } else {
+                arduinoCodeDiv.classList.remove('show');
+            }
+        }
+
+        // 코드 복사 기능
+        function copyCode() {
+            const copyBtn = document.getElementById('copyBtn');
+            
+            navigator.clipboard.writeText(arduinoCode).then(() =&gt; {
+                copyBtn.textContent = '✅ 복사됨!';
+                copyBtn.classList.add('copied');
+                
+                setTimeout(() =&gt; {
+                    copyBtn.textContent = '📋 복사';
+                    copyBtn.classList.remove('copied');
+                }, 2000);
+            }).catch(err =&gt; {
+                console.error('복사 실패:', err);
+                copyBtn.textContent = '❌ 실패';
+                setTimeout(() =&gt; {
+                    copyBtn.textContent = '📋 복사';
+                }, 2000);
+            });
+        }
+
+        // Arduino Nano 33 BLE 코드
+        const nanoArduinoCode = `#include &lt;Arduino_LSM9DS1.h&gt;  // Nano 33 Sense Rev2 IMU 라이브러리
+
+#define THRESHOLD 4   // g 단위, 2.5g 이상 급격한 변화면 낙상으로 판단
+#define TX_BAUD 9600
+
+void setup() {
+  Serial.begin(9600);     // PC 모니터링용
+  Serial1.begin(TX_BAUD); // 다른 아두이노로 전송 (TX=Nano D1, RX=상대보드 RX핀)
+  
+  if (!IMU.begin()) {
+    Serial.println("IMU 초기화 실패!");
+    while (1);
+  }
+  Serial.println("IMU 시작 - 낙상 감지 대기 중...");
+}
+
+void loop() {
+  float x, y, z;
+
+  if (IMU.accelerationAvailable()) {
+    IMU.readAcceleration(x, y, z);
+
+    float magnitude = sqrt(x * x + y * y + z * z); // 가속도 크기 (g 단위)
+
+    if (magnitude &gt; 3) {
+       Serial.println(magnitude);
+    }
+
+    if (magnitude &gt; THRESHOLD) {
+      Serial.println("낙상 감지!");
+      Serial1.println("FALL");   // 다른 보드로 낙상 신호 전송
+      delay(1000);               // 중복 감지 방지
+    }
+  } 
+}`;
+
+        // 코드 토글 기능 (Nano 33 BLE)
+        function toggleNanoCodeDisplay() {
+            const nanoCodeToggle = document.getElementById('nanoCodeToggle');
+            const nanoArduinoCodeDiv = document.getElementById('nanoArduinoCode');
+            const nanoCodeContent = document.getElementById('nanoCodeContent');
+
+            if (nanoCodeToggle.checked) {
+                nanoCodeContent.textContent = nanoArduinoCode;
+                nanoArduinoCodeDiv.classList.add('show');
+            } else {
+                nanoArduinoCodeDiv.classList.remove('show');
+            }
+        }
+
+        // 코드 복사 기능 (Nano 33 BLE)
+        function copyNanoCode() {
+            const nanoCopyBtn = document.getElementById('nanoCopyBtn');
+            
+            navigator.clipboard.writeText(nanoArduinoCode).then(() =&gt; {
+                nanoCopyBtn.textContent = '✅ 복사됨!';
+                nanoCopyBtn.classList.add('copied');
+                
+                setTimeout(() =&gt; {
+                    nanoCopyBtn.textContent = '📋 복사';
+                    nanoCopyBtn.classList.remove('copied');
+                }, 2000);
+            }).catch(err =&gt; {
+                console.error('복사 실패:', err);
+                nanoCopyBtn.textContent = '❌ 실패';
+                setTimeout(() =&gt; {
+                    nanoCopyBtn.textContent = '📋 복사';
+                }, 2000);
+            });
+        }
+
+        // 스마트 지팡이 모니터링 코드 (JavaScript 부분)
+        const monitoringCode = `// 스마트 지팡이 모니터링 시스템 - JavaScript Core Functions
+
+// MQTT 연결 및 메시지 처리
+const MQTT_TOPIC_SUB = 'SC_pub';
+let client;
+let isConnected = false;
+
+// 음성 알림 제어 변수
+let lastSpeechTime = 0;
+let lastSensorSpeech = 0;
+const speechCooldown = 10000; // 10초 간격
+
+// 앱 초기화 함수
+function initializeApp() {
+    // DOM 요소들 초기화
+    connectionStatus = document.getElementById('connectionStatus');
+    distance1 = document.getElementById('distance1');
+    distance2 = document.getElementById('distance2');
+    status1 = document.getElementById('status1');
+    status2 = document.getElementById('status2');
+    safetyStatus = document.getElementById('safetyStatus');
+    fallStatus = document.getElementById('fallStatus');
+    obstacleStatus = document.getElementById('obstacleStatus');
+    lastUpdate = document.getElementById('lastUpdate');
+
+    // MQTT 연결 설정
+    const clientId = 'webClient_' + Math.random().toString(16).substr(2, 8);
+    const isHttps = location.protocol === 'https:';
+    const mqttUrl = isHttps ? 'wss://pubcode2.iptime.org:39002' : 'ws://pubcode2.iptime.org:39001';
+    
+    try {
+        client = mqtt.connect(mqttUrl, {
+            clientId: clientId,
+            clean: true,
+            keepalive: 30,
+            connectTimeout: 15 * 1000,
+            reconnectPeriod: 5000,
+            protocolVersion: 4
+        });
+        setupMQTTEvents();
+    } catch (error) {
+        console.error('MQTT 클라이언트 생성 실패:', error);
+        updateConnectionStatus(false, 'MQTT 연결 실패');
+    }
+}
+
+// MQTT 메시지 처리 함수
+function processMessage(data) {
+    console.log('처리 중인 메시지:', data);
+    
+    // 낙상 감지 체크
+    if (data.includes('"event":"FALL"') || data === 'FALL') {
+        handleFallDetection();
+        return;
+    }
+    
+    // JSON 형태 데이터 파싱
+    try {
+        const jsonData = JSON.parse(data);
+        if (jsonData.event === 'FALL') {
+            handleFallDetection();
+            return;
+        }
+        if (jsonData.sensor1 !== undefined &amp;&amp; jsonData.sensor2 !== undefined) {
+            updateSensorDisplay(1, jsonData.sensor1);
+            updateSensorDisplay(2, jsonData.sensor2);
+            return;
+        }
+    } catch (e) {
+        // JSON이 아닌 경우 다른 파싱 방법 시도
+    }
+    
+    // 거리 데이터 파싱
+    if (data.includes('Distance Alert!')) {
+        handleDistanceAlert(data);
+        parseDistanceData(data);
+    } else if (data.includes('d1=') &amp;&amp; data.includes('d2=')) {
+        parseDistanceData(data);
+    } else if (data.includes('센서1') &amp;&amp; data.includes('센서2')) {
+        parseKoreanDistanceData(data);
+    }
+}
+
+// 음성 알림 함수 (Chrome 브라우저 호환)
+function speakMessage(message, priority = 'normal') {
+    const currentTime = Date.now();
+    
+    if (priority === 'high' || currentTime - lastSpeechTime &gt; speechCooldown) {
+        if ('speechSynthesis' in window) {
+            try {
+                window.speechSynthesis.cancel();
+                
+                const utterance = new SpeechSynthesisUtterance(message);
+                const voices = window.speechSynthesis.getVoices();
+                const koreanVoice = voices.find(voice =&gt; 
+                    voice.lang.includes('ko') || voice.lang.includes('KR')
+                );
+                
+                if (koreanVoice) {
+                    utterance.voice = koreanVoice;
+                    utterance.lang = koreanVoice.lang;
+                } else {
+                    utterance.lang = 'ko-KR';
+                }
+                
+                utterance.rate = 0.9;
+                utterance.pitch = 1.0;
+                utterance.volume = 1.0;
+                
+                window.speechSynthesis.speak(utterance);
+                lastSpeechTime = currentTime;
+                
+            } catch (error) {
+                console.error('음성 합성 오류:', error);
+                showTextAlert(message);
+            }
+        } else {
+            showTextAlert(message);
+        }
+    }
+}
+
+// 낙상 감지 처리
+function handleFallDetection() {
+    fallStatus.textContent = '🚨 낙상 감지됨!';
+    fallStatus.className = 'alert-message alert-fall';
+    safetyStatus.textContent = '🚨 응급 상황 발생!';
+    safetyStatus.className = 'alert-message alert-fall';
+
+    speakMessage('경고! 낙상이 감지되었습니다. 응급 상황입니다.', 'high');
+
+    setTimeout(() =&gt; {
+        fallStatus.textContent = '정상 상태';
+        fallStatus.className = 'alert-message alert-normal';
+        updateSafetyStatus();
+        speakMessage('낙상 경고가 해제되었습니다.');
+    }, 5000);
+}
+
+// 센서 표시 업데이트
+function updateSensorDisplay(sensorNum, distance) {
+    console.log(\`센서\${sensorNum} 업데이트: \${distance}cm\`);
+    
+    if (sensorNum === 1) {
+        distance1.textContent = distance + ' cm';
+        updateSensorStatus(status1, distance);
+    } else if (sensorNum === 2) {
+        distance2.textContent = distance + ' cm';
+        updateSensorStatus(status2, distance);
+    }
+
+    // 장애물 감지 체크
+    if (distance &lt; 20) {
+        triggerObstacleAlert(sensorNum, distance);
+    }
+}
+
+// 장애물 경고 트리거
+function triggerObstacleAlert(sensorNum, distance) {
+    obstacleStatus.textContent = \`⚠️ 센서\${sensorNum}에서 장애물 감지! (\${distance}cm)\`;
+    obstacleStatus.className = 'alert-message alert-obstacle';
+    safetyStatus.textContent = '⚠️ 주의 필요';
+    safetyStatus.className = 'alert-message alert-obstacle';
+
+    speakMessage(\`주의! 센서 \${sensorNum}에서 \${distance}센티미터 거리에 장애물이 감지되었습니다.\`, 'high');
+
+    setTimeout(() =&gt; {
+        if (!obstacleStatus.className.includes('alert-obstacle')) return;
+        obstacleStatus.textContent = '경로 안전';
+        obstacleStatus.className = 'alert-message alert-normal';
+        updateSafetyStatus();
+        speakMessage('장애물이 해제되었습니다. 경로가 안전합니다.');
+    }, 3000);
+}`;
+
+        // HTML 전체 코드 가져오기 함수
+        function getFullHtmlCode() {
+            return document.documentElement.outerHTML;
+        }
+
+        // 모니터링 코드 토글 기능
+        function toggleMonitoringCodeDisplay() {
+            const monitoringCodeToggle = document.getElementById('monitoringCodeToggle');
+            const monitoringCodeDiv = document.getElementById('monitoringCode');
+            const monitoringCodeContent = document.getElementById('monitoringCodeContent');
+
+            if (monitoringCodeToggle.checked) {
+                monitoringCodeContent.textContent = monitoringCode;
+                monitoringCodeDiv.classList.add('show');
+            } else {
+                monitoringCodeDiv.classList.remove('show');
+            }
+        }
+
+        // 모니터링 코드 복사 기능
+        function copyMonitoringCode() {
+            const monitoringCopyBtn = document.getElementById('monitoringCopyBtn');
+            
+            navigator.clipboard.writeText(monitoringCode).then(() =&gt; {
+                monitoringCopyBtn.textContent = '✅ 복사됨!';
+                monitoringCopyBtn.classList.add('copied');
+                
+                setTimeout(() =&gt; {
+                    monitoringCopyBtn.textContent = '📋 복사';
+                    monitoringCopyBtn.classList.remove('copied');
+                }, 2000);
+            }).catch(err =&gt; {
+                console.error('복사 실패:', err);
+                monitoringCopyBtn.textContent = '❌ 실패';
+                setTimeout(() =&gt; {
+                    monitoringCopyBtn.textContent = '📋 복사';
+                }, 2000);
+            });
+        }
+
+        // HTML 코드 토글 기능
+        function toggleHtmlCodeDisplay() {
+            const htmlCodeToggle = document.getElementById('htmlCodeToggle');
+            const htmlCodeDiv = document.getElementById('htmlCode');
+            const htmlCodeContent = document.getElementById('htmlCodeContent');
+
+            if (htmlCodeToggle.checked) {
+                const fullHtmlCode = getFullHtmlCode();
+                htmlCodeContent.textContent = fullHtmlCode;
+                htmlCodeDiv.classList.add('show');
+            } else {
+                htmlCodeDiv.classList.remove('show');
+            }
+        }
+
+        // HTML 코드 복사 기능
+        function copyHtmlCode() {
+            const htmlCopyBtn = document.getElementById('htmlCopyBtn');
+            const fullHtmlCode = getFullHtmlCode();
+            
+            navigator.clipboard.writeText(fullHtmlCode).then(() =&gt; {
+                htmlCopyBtn.textContent = '✅ 복사됨!';
+                htmlCopyBtn.classList.add('copied');
+                
+                setTimeout(() =&gt; {
+                    htmlCopyBtn.textContent = '📋 복사';
+                    htmlCopyBtn.classList.remove('copied');
+                }, 2000);
+            }).catch(err =&gt; {
+                console.error('복사 실패:', err);
+                htmlCopyBtn.textContent = '❌ 실패';
+                setTimeout(() =&gt; {
+                    htmlCopyBtn.textContent = '📋 복사';
+                }, 2000);
+            });
+        }
+
+        // 음성 테스트 함수
+        function testSpeech() {
+            console.log('🎤 음성 테스트 시작');
+            speakMessage('스마트 지팡이 음성 테스트입니다. 음성이 정상적으로 작동하고 있습니다.', 'high');
+        }
+
+        // 페이지 로드 시 초기화
+        window.addEventListener('load', function() {
+            // 앱 초기화 (DOM 요소 및 MQTT 연결)
+            initializeApp();
+            
+            // 음성 시스템 초기화
+            initializeSpeech();
+            
+            // 이벤트 리스너 등록
+            document.getElementById('codeToggle').addEventListener('change', toggleCodeDisplay);
+            document.getElementById('copyBtn').addEventListener('click', copyCode);
+            document.getElementById('nanoCodeToggle').addEventListener('change', toggleNanoCodeDisplay);
+            document.getElementById('nanoCopyBtn').addEventListener('click', copyNanoCode);
+            document.getElementById('monitoringCodeToggle').addEventListener('change', toggleMonitoringCodeDisplay);
+            document.getElementById('monitoringCopyBtn').addEventListener('click', copyMonitoringCode);
+            document.getElementById('htmlCodeToggle').addEventListener('change', toggleHtmlCodeDisplay);
+            document.getElementById('htmlCopyBtn').addEventListener('click', copyHtmlCode);
+        });
+    &lt;/script&gt;
+
+&lt;/body&gt;&lt;/html&gt;</div>
+        </div>
+
+        <div class="connection-status connected" id="connectionStatus">✅ MQTT 서버 연결됨</div>
+
+        <div style="text-align: center; margin: 20px;">
+            <button onclick="testSpeech()" style="background: #007bff; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 16px;">
+                🔊 음성 테스트
+            </button>
+            <small style="display: block; margin-top: 5px; color: #666;">
+                음성이 안 들리면 이 버튼을 먼저 클릭하세요
+            </small>
+        </div>
+
+        <div class="status-panel">
+            <div class="card">
+                <div class="card-title">📏 거리 센서 데이터</div>
+                <div class="sensor-data">
+                    <span class="sensor-label">센서 1:</span>
+                    <span class="sensor-value" id="distance1">-- cm</span>
+                    <span class="status-indicator status-normal" id="status1"></span>
+                </div>
+                <div class="sensor-data">
+                    <span class="sensor-label">센서 2:</span>
+                    <span class="sensor-value" id="distance2">-- cm</span>
+                    <span class="status-indicator status-normal" id="status2"></span>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">🚨 안전 상태</div>
+                <div class="alert-message alert-normal" id="safetyStatus">
+                    시스템 정상 작동 중
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">⚠️ 낙상 감지</div>
+                <div class="alert-message alert-normal" id="fallStatus">
+                    정상 상태
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">🚧 장애물 감지</div>
+                <div class="alert-message alert-normal" id="obstacleStatus">
+                    경로 안전
+                </div>
+            </div>
+        </div>
+
+        <div class="timestamp" id="lastUpdate">
+            마지막 업데이트: --
+        </div>
+    </div>
+
+    <script>
+        const MQTT_TOPIC_SUB = 'SC_pub'; // 아두이노에서 publish하는 토픽을 구독
+
+        let client;
+        let isConnected = false;
+
+        // DOM 요소들
+        let connectionStatus, distance1, distance2, status1, status2;
+        let safetyStatus, fallStatus, obstacleStatus, lastUpdate;
+
+        // 음성 알림 제어 변수
+        let lastSpeechTime = 0;
+        let lastSensorSpeech = 0;
+        const speechCooldown = 10000; // 10초 간격으로 음성 알림 제한
+
+        // 페이지 로드 후 DOM 요소 초기화 및 MQTT 연결
+        function initializeApp() {
+            // DOM 요소들 초기화
+            connectionStatus = document.getElementById('connectionStatus');
+            distance1 = document.getElementById('distance1');
+            distance2 = document.getElementById('distance2');
+            status1 = document.getElementById('status1');
+            status2 = document.getElementById('status2');
+            safetyStatus = document.getElementById('safetyStatus');
+            fallStatus = document.getElementById('fallStatus');
+            obstacleStatus = document.getElementById('obstacleStatus');
+            lastUpdate = document.getElementById('lastUpdate');
+
+            // MQTT 연결 (HTTPS/HTTP 자동 감지)
+            const clientId = 'webClient_' + Math.random().toString(16).substr(2, 8);
+            const isHttps = location.protocol === 'https:';
+            const mqttUrl = isHttps ? 'wss://pubcode2.iptime.org:39002' : 'ws://pubcode2.iptime.org:39001';
+            
+            console.log('🔌 MQTT 연결 시도:', clientId);
+            console.log('현재 프로토콜:', location.protocol);
+            console.log('서버 주소:', mqttUrl);
+            
+            try {
+                client = mqtt.connect(mqttUrl, {
+                    clientId: clientId,
+                    clean: true,
+                    keepalive: 30,
+                    connectTimeout: 15 * 1000,
+                    reconnectPeriod: 5000,
+                    protocolVersion: 4,
+                    username: undefined,
+                    password: undefined
+                });
+                
+                console.log('📡 MQTT 클라이언트 생성 완료');
+            } catch (error) {
+                console.error('❌ MQTT 클라이언트 생성 실패:', error);
+                if (isHttps) {
+                    console.warn('⚠️ HTTPS에서 WSS 연결 실패 - HTTP로 접속해보세요');
+                    console.log('🔗 HTTP 주소: http://poly.pubcode.kr/B03/index.html');
+                    updateConnectionStatus(false, '❌ WSS 연결 실패 - HTTP로 접속하세요');
+                } else {
+                    updateConnectionStatus(false, '클라이언트 생성 실패');
+                }
+                return;
+            }
+
+            setupMQTTEvents();
+        }
+
+        // MQTT 이벤트 설정
+        function setupMQTTEvents() {
+            console.log('🔧 MQTT 이벤트 핸들러 설정 중...');
+            console.log('브라우저:', navigator.userAgent);
+            
+            client.on('connect', () => {
+                console.log('✅ WebSocket MQTT 연결 성공!');
+                isConnected = true;
+                updateConnectionStatus(true);
+                client.subscribe(MQTT_TOPIC_SUB, (err) => {
+                    if (err) {
+                        console.error('❌ 토픽 구독 실패:', err);
+                    } else {
+                        console.log('📡 토픽 구독 성공:', MQTT_TOPIC_SUB);
+                        // 음성 알림
+                        speakMessage('스마트 지팡이 시스템이 연결되었습니다. 모니터링을 시작합니다.');
+                    }
+                });
+            });
+
+            client.on('message', (topic, message) => {
+                const data = message.toString();
+                console.log('📩 수신된 메시지:', data);
+                processMessage(data);
+                updateTimestamp();
+            });
+
+            client.on('error', (error) => {
+                console.error('❌ MQTT 연결 오류:', error);
+                console.error('오류 상세:', error.message);
+                isConnected = false;
+                updateConnectionStatus(false);
+            });
+
+            client.on('offline', () => {
+                console.log('📴 MQTT 오프라인 상태');
+                isConnected = false;
+                updateConnectionStatus(false);
+            });
+
+            client.on('close', () => {
+                console.log('🔌 MQTT 연결 종료');
+                isConnected = false;
+                updateConnectionStatus(false);
+            });
+
+            client.on('reconnect', () => {
+                console.log('🔄 MQTT 재연결 시도 중...');
+            });
+
+            client.on('disconnect', () => {
+                console.log('⚠️ MQTT 연결 해제');
+                isConnected = false;
+                updateConnectionStatus(false);
+            });
+
+            // 연결 시도 타임아웃 설정 (5초)
+            setTimeout(() => {
+                if (!isConnected) {
+                    console.warn('⏰ MQTT 연결 타임아웃 (5초)');
+                    if (location.protocol === 'https:') {
+                        console.log('🚨 HTTPS에서 WSS 연결 실패!');
+                        console.log('💡 해결 방법: HTTP로 접속하세요');
+                        console.log('🔗 HTTP 주소: http://poly.pubcode.kr/B03/index.html');
+                        updateConnectionStatus(false, '❌ WSS 서버 없음 - HTTP로 접속 필요');
+                        
+                        // HTTP 링크를 화면에 표시
+                        showHttpLink();
+                    } else {
+                        console.log('🔧 연결 문제 해결 방법:');
+                        console.log('1. 네트워크 연결 확인');
+                        console.log('2. 방화벽 설정 확인');
+                        console.log('3. MQTT 서버 상태 확인');
+                        updateConnectionStatus(false, '연결 타임아웃 - 네트워크를 확인하세요');
+                    }
+                }
+            }, 5000);
+        }
+
+        // 연결 상태 업데이트
+        function updateConnectionStatus(connected, customMessage = null) {
+            if (connected) {
+                connectionStatus.textContent = '✅ MQTT 서버 연결됨';
+                connectionStatus.className = 'connection-status connected';
+            } else {
+                const message = customMessage || '❌ MQTT 서버 연결 실패';
+                connectionStatus.textContent = message;
+                connectionStatus.className = 'connection-status disconnected';
+            }
+        }
+
+        // 메시지 처리
+        function processMessage(data) {
+            console.log('처리 중인 메시지:', data);
+            
+            // JSON 형태 낙상 신호 체크
+            if (data.includes('"event":"FALL"') || data.includes("'event':'FALL'")) {
+                handleFallDetection();
+                return;
+            }
+            
+            // 기존 문자열 형태 낙상 신호 체크
+            if (data === 'FALL') {
+                handleFallDetection();
+                return;
+            }
+            
+            // JSON 형태 데이터 파싱 시도
+            try {
+                const jsonData = JSON.parse(data);
+                if (jsonData.event === 'FALL') {
+                    handleFallDetection();
+                    return;
+                }
+                if (jsonData.sensor1 !== undefined && jsonData.sensor2 !== undefined) {
+                    updateSensorDisplay(1, jsonData.sensor1);
+                    updateSensorDisplay(2, jsonData.sensor2);
+                    return;
+                }
+            } catch (e) {
+                // JSON이 아닌 경우 계속 진행
+            }
+            
+            if (data.includes('Distance Alert!')) {
+                handleDistanceAlert(data);
+                parseDistanceData(data); // Distance Alert에서도 거리 데이터 파싱
+            } else if (data.includes('d1=') && data.includes('d2=')) {
+                parseDistanceData(data);
+            } else if (data.includes('센서1') && data.includes('센서2')) {
+                // "센서1 거리: 25 cm | 센서2 거리: 30 cm" 형태 파싱
+                parseKoreanDistanceData(data);
+            } else if (data.includes('거리:')) {
+                // 개별 센서 데이터 파싱
+                parseIndividualSensorData(data);
+            } else {
+                // 기타 숫자 데이터나 JSON 형태 시도
+                tryParseNumericData(data);
+            }
+        }
+
+        // 음성 알림 함수 (크롬 HTTP 호환성 개선)
+        function speakMessage(message, priority = 'normal') {
+            const currentTime = Date.now();
+            
+            // 우선순위가 높은 경우 (낙상, 장애물) 즉시 재생
+            if (priority === 'high' || currentTime - lastSpeechTime > speechCooldown) {
+                if ('speechSynthesis' in window) {
+                    try {
+                        // 기존 음성 정지
+                        window.speechSynthesis.cancel();
+                        
+                        // 크롬에서 음성 목록 로드 대기
+                        const voices = window.speechSynthesis.getVoices();
+                        
+                        const utterance = new SpeechSynthesisUtterance(message);
+                        
+                        // 한국어 음성 찾기
+                        const koreanVoice = voices.find(voice => 
+                            voice.lang.includes('ko') || voice.lang.includes('KR')
+                        );
+                        
+                        if (koreanVoice) {
+                            utterance.voice = koreanVoice;
+                            utterance.lang = koreanVoice.lang;
+                        } else {
+                            utterance.lang = 'ko-KR';
+                        }
+                        
+                        utterance.rate = 0.9;
+                        utterance.pitch = 1.0;
+                        utterance.volume = 1.0;
+                        
+                        // 크롬 HTTP에서 사용자 상호작용 없이 재생 시도
+                        const playPromise = new Promise((resolve) => {
+                            utterance.onstart = () => {
+                                console.log('🔊 음성 재생 시작:', message);
+                                resolve();
+                            };
+                            utterance.onerror = (event) => {
+                                console.warn('🔇 음성 재생 실패:', event.error);
+                                console.log('💡 해결 방법: 페이지를 클릭한 후 다시 시도하세요.');
+                                resolve();
+                            };
+                            utterance.onend = () => {
+                                console.log('🔊 음성 재생 완료');
+                            };
+                        });
+                        
+                        window.speechSynthesis.speak(utterance);
+                        console.log('🔊 음성 알림 요청:', message);
+                        
+                        lastSpeechTime = currentTime;
+                        
+                    } catch (error) {
+                        console.error('🔇 음성 합성 오류:', error);
+                        showTextAlert(message); // 대체 텍스트 알림
+                    }
+                } else {
+                    console.warn('🔇 이 브라우저는 음성 합성을 지원하지 않습니다.');
+                    showTextAlert(message); // 대체 텍스트 알림
+                }
+            } else {
+                console.log('🔇 음성 알림 스킵 (쿨다운):', message);
+            }
+        }
+
+        // 음성이 안 될 때 대체 텍스트 알림
+        function showTextAlert(message) {
+            const alertDiv = document.createElement('div');
+            alertDiv.style.cssText = `
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                background: #ff4444;
+                color: white;
+                padding: 20px;
+                border-radius: 10px;
+                font-size: 18px;
+                font-weight: bold;
+                z-index: 2000;
+                box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+                max-width: 80%;
+                text-align: center;
+            `;
+            alertDiv.textContent = message;
+            document.body.appendChild(alertDiv);
+            
+            // 3초 후 제거
+            setTimeout(() => {
+                if (alertDiv.parentElement) {
+                    alertDiv.remove();
+                }
+            }, 3000);
+        }
+
+        // 음성 권한 요청 및 초기화
+        function initializeSpeech() {
+            if ('speechSynthesis' in window) {
+                // 크롬에서 음성 목록 로드 대기
+                const loadVoices = () => {
+                    const voices = window.speechSynthesis.getVoices();
+                    console.log('🎤 사용 가능한 음성:', voices.length, '개');
+                    
+                    const koreanVoices = voices.filter(voice => 
+                        voice.lang.includes('ko') || voice.lang.includes('KR')
+                    );
+                    console.log('🇰🇷 한국어 음성:', koreanVoices.length, '개');
+                    
+                    if (koreanVoices.length > 0) {
+                        console.log('✅ 한국어 음성 사용 가능');
+                    } else {
+                        console.warn('⚠️ 한국어 음성이 없어 기본 음성을 사용합니다.');
+                    }
+                };
+
+                // 음성 목록이 로드되면 실행
+                if (window.speechSynthesis.getVoices().length > 0) {
+                    loadVoices();
+                } else {
+                    window.speechSynthesis.onvoiceschanged = loadVoices;
+                }
+                
+                // 사용자 상호작용으로 음성 권한 활성화
+                document.addEventListener('click', function enableSpeech() {
+                    const testUtterance = new SpeechSynthesisUtterance('');
+                    window.speechSynthesis.speak(testUtterance);
+                    window.speechSynthesis.cancel();
+                    console.log('🔊 음성 권한 활성화됨');
+                    document.removeEventListener('click', enableSpeech);
+                }, { once: true });
+            }
+        }
+
+        // 낙상 감지 처리
+        function handleFallDetection() {
+            fallStatus.textContent = '🚨 낙상 감지됨!';
+            fallStatus.className = 'alert-message alert-fall';
+            safetyStatus.textContent = '🚨 응급 상황 발생!';
+            safetyStatus.className = 'alert-message alert-fall';
+
+            // 음성 알림 (높은 우선순위)
+            speakMessage('경고! 낙상이 감지되었습니다. 응급 상황입니다.', 'high');
+
+            // 5초 후 정상 상태로 복귀
+            setTimeout(() => {
+                fallStatus.textContent = '정상 상태';
+                fallStatus.className = 'alert-message alert-normal';
+                updateSafetyStatus();
+                speakMessage('낙상 경고가 해제되었습니다.');
+            }, 5000);
+        }
+
+        // 거리 경고 처리
+        function handleDistanceAlert(data) {
+            obstacleStatus.textContent = '⚠️ 장애물 감지! (20cm 미만)';
+            obstacleStatus.className = 'alert-message alert-obstacle';
+            safetyStatus.textContent = '⚠️ 주의 필요';
+            safetyStatus.className = 'alert-message alert-obstacle';
+
+            // 음성 알림 (높은 우선순위)
+            speakMessage('주의! 장애물이 감지되었습니다. 경로를 확인하세요.', 'high');
+
+            // 3초 후 정상 상태로 복귀
+            setTimeout(() => {
+                obstacleStatus.textContent = '경로 안전';
+                obstacleStatus.className = 'alert-message alert-normal';
+                updateSafetyStatus();
+                speakMessage('장애물 경고가 해제되었습니다. 경로가 안전합니다.');
+            }, 3000);
+        }
+
+        // 거리 데이터 파싱 (d1=25, d2=30 형태)
+        function parseDistanceData(data) {
+            const d1Match = data.match(/d1=(\d+)/);
+            const d2Match = data.match(/d2=(\d+)/);
+
+            if (d1Match) {
+                const dist1 = parseInt(d1Match[1]);
+                updateSensorDisplay(1, dist1);
+            }
+
+            if (d2Match) {
+                const dist2 = parseInt(d2Match[1]);
+                updateSensorDisplay(2, dist2);
+            }
+        }
+
+        // 한국어 거리 데이터 파싱 ("센서1 거리: 25 cm | 센서2 거리: 30 cm" 형태)
+        function parseKoreanDistanceData(data) {
+            const sensor1Match = data.match(/센서1\s*거리:\s*(\d+)\s*cm/);
+            const sensor2Match = data.match(/센서2\s*거리:\s*(\d+)\s*cm/);
+
+            if (sensor1Match) {
+                const dist1 = parseInt(sensor1Match[1]);
+                updateSensorDisplay(1, dist1);
+            }
+
+            if (sensor2Match) {
+                const dist2 = parseInt(sensor2Match[1]);
+                updateSensorDisplay(2, dist2);
+            }
+        }
+
+        // 개별 센서 데이터 파싱
+        function parseIndividualSensorData(data) {
+            // "거리: 25" 또는 "Distance: 25" 형태
+            const distMatch = data.match(/거리:\s*(\d+)/);
+            if (distMatch) {
+                const distance = parseInt(distMatch[1]);
+                // 마지막으로 업데이트할 센서 결정 (교대로 업데이트)
+                const currentTime = Date.now();
+                const sensorNum = Math.floor(currentTime / 1000) % 2 + 1;
+                updateSensorDisplay(sensorNum, distance);
+            }
+        }
+
+        // 숫자 데이터 시도 파싱
+        function tryParseNumericData(data) {
+            // JSON 형태 시도
+            try {
+                const jsonData = JSON.parse(data);
+                if (jsonData.sensor1 !== undefined) {
+                    updateSensorDisplay(1, jsonData.sensor1);
+                }
+                if (jsonData.sensor2 !== undefined) {
+                    updateSensorDisplay(2, jsonData.sensor2);
+                }
+                return;
+            } catch (e) {
+                // JSON이 아님
+            }
+
+            // 쉼표로 구분된 두 숫자 시도 "25,30"
+            const csvMatch = data.match(/^(\d+),(\d+)$/);
+            if (csvMatch) {
+                updateSensorDisplay(1, parseInt(csvMatch[1]));
+                updateSensorDisplay(2, parseInt(csvMatch[2]));
+                return;
+            }
+
+            // 단순 숫자 하나만 있는 경우
+            const numMatch = data.match(/^\d+$/);
+            if (numMatch) {
+                const distance = parseInt(data);
+                // 교대로 센서에 할당
+                const sensorNum = Math.floor(Date.now() / 1000) % 2 + 1;
+                updateSensorDisplay(sensorNum, distance);
+            }
+        }
+
+        // 센서 표시 업데이트 (통합 함수)
+        function updateSensorDisplay(sensorNum, distance) {
+            console.log(`센서${sensorNum} 업데이트: ${distance}cm`);
+            
+            if (sensorNum === 1) {
+                distance1.textContent = distance + ' cm';
+                updateSensorStatus(status1, distance);
+            } else if (sensorNum === 2) {
+                distance2.textContent = distance + ' cm';
+                updateSensorStatus(status2, distance);
+            }
+
+            // 장애물 감지 체크
+            if (distance < 20) {
+                triggerObstacleAlert(sensorNum, distance);
+            } else {
+                // 정상 상태일 때 30초마다 상태 알림
+                const currentTime = Date.now();
+                if (currentTime - lastSensorSpeech > 30000) {
+                    speakMessage(`센서가 정상 작동 중입니다. 전방 경로가 안전합니다.`);
+                    lastSensorSpeech = currentTime;
+                }
+            }
+        }
+
+        // 장애물 경고 트리거
+        function triggerObstacleAlert(sensorNum, distance) {
+            console.log(`장애물 감지! 센서${sensorNum}: ${distance}cm`);
+            obstacleStatus.textContent = `⚠️ 센서${sensorNum}에서 장애물 감지! (${distance}cm)`;
+            obstacleStatus.className = 'alert-message alert-obstacle';
+            safetyStatus.textContent = '⚠️ 주의 필요';
+            safetyStatus.className = 'alert-message alert-obstacle';
+
+            // 음성 알림 (센서별 구분, 높은 우선순위)
+            speakMessage(`주의! 센서 ${sensorNum}에서 ${distance}센티미터 거리에 장애물이 감지되었습니다.`, 'high');
+
+            // 3초 후 정상 상태로 복귀
+            setTimeout(() => {
+                if (!obstacleStatus.className.includes('alert-obstacle')) return;
+                obstacleStatus.textContent = '경로 안전';
+                obstacleStatus.className = 'alert-message alert-normal';
+                updateSafetyStatus();
+                speakMessage('장애물이 해제되었습니다. 경로가 안전합니다.');
+            }, 3000);
+        }
+
+        // 센서 상태 업데이트
+        function updateSensorStatus(statusElement, distance) {
+            if (distance < 20) {
+                statusElement.className = 'status-indicator status-danger';
+            } else if (distance < 50) {
+                statusElement.className = 'status-indicator status-warning';
+            } else {
+                statusElement.className = 'status-indicator status-normal';
+            }
+        }
+
+        // 전체 안전 상태 업데이트
+        function updateSafetyStatus() {
+            if (fallStatus.className.includes('alert-fall') || 
+                obstacleStatus.className.includes('alert-obstacle')) {
+                return; // 이미 경고 상태면 변경하지 않음
+            }
+
+            safetyStatus.textContent = '✅ 시스템 정상 작동 중';
+            safetyStatus.className = 'alert-message alert-normal';
+        }
+
+        // 타임스탬프 업데이트
+        function updateTimestamp() {
+            const now = new Date();
+            lastUpdate.textContent = `마지막 업데이트: ${now.toLocaleString('ko-KR')}`;
+        }
+
+        // HTTP 링크 표시
+        function showHttpLink() {
+            const linkDiv = document.createElement('div');
+            linkDiv.style.cssText = `
+                position: fixed;
+                top: 20px;
+                left: 50%;
+                transform: translateX(-50%);
+                background: #dc3545;
+                color: white;
+                padding: 15px 20px;
+                border-radius: 10px;
+                box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+                z-index: 1000;
+                text-align: center;
+                font-weight: bold;
+            `;
+            linkDiv.innerHTML = `
+                🚨 HTTPS에서 MQTT 연결 불가<br>
+                <a href="http://poly.pubcode.kr/B03/index.html" 
+                   style="color: #fff3cd; text-decoration: underline;">
+                   HTTP 버전으로 이동하기
+                </a>
+                <button onclick="this.parentElement.remove()" 
+                        style="margin-left: 10px; background: none; border: 1px solid white; color: white; padding: 5px 10px; border-radius: 5px; cursor: pointer;">
+                   닫기
+                </button>
+            `;
+            document.body.appendChild(linkDiv);
+            
+            // 10초 후 자동으로 제거
+            setTimeout(() => {
+                if (linkDiv.parentElement) {
+                    linkDiv.remove();
+                }
+            }, 10000);
+        }
+
+        // Arduino UNO R4 WIFI 코드 (최신 업데이트)
+        const arduinoCode = `#include <Arduino.h>
+#include <WiFiS3.h>         // UNO R4 WiFi 용
+#include <PubSubClient.h>   // MQTT 라이브러리
+
+#define RX_BAUD 9600
+
+// WiFi 정보
+const char* ssid = "SmartCenter 2.4G";
+const char* password = "12345678";
+
+// MQTT 서버 정보
+const char* mqtt_server = "pubcode2.iptime.org";
+const int mqtt_port = 31883;
+const char* mqtt_topic_sub = "SC_sub";
+const char* mqtt_topic_pub = "SC_pub";
+
+WiFiClient espClient;
+PubSubClient client(espClient);
+
+// HC-SR04 센서1, 센서2 핀
+#define TRIG1 5
+#define ECHO1 4
+#define TRIG2 2
+#define ECHO2 3
+
+// 진동 모터
+#define VIBRATION_MOTOR 8
+bool vibrationOn = false;
+
+// 버저
+#define BUZZER_PIN 9
+
+// 거리센서 값 주기적 전송용
+unsigned long lastSendTime = 0;
+const unsigned long sendInterval = 1000; // 1초마다 전송
+
+// 음계 정의 (슈퍼마리오 테마용)
+#define NOTE_E4 330
+#define NOTE_F4 349
+#define NOTE_G4 392
+#define NOTE_A4 440
+#define NOTE_AS4 466
+#define NOTE_B4 494
+#define NOTE_C5 523
+#define NOTE_D5 587
+#define NOTE_E5 659
+#define NOTE_F5 698
+#define NOTE_G5 784
+#define NOTE_A5 880
+
+// 슈퍼마리오 테마 (짧은 버전)
+int marioMelody[] = {
+  NOTE_E5, NOTE_E5, 0, NOTE_E5,
+  0, NOTE_C5, NOTE_E5, 0,
+  NOTE_G5, 0, 0,  0,
+  NOTE_G4, 0, 0, 0,
+
+  NOTE_C5, 0, 0, NOTE_G4,
+  0, 0, NOTE_E4, 0,
+  0, NOTE_A4, 0, NOTE_B4,
+  0, NOTE_AS4, NOTE_A4, 0,
+
+  NOTE_G4, NOTE_E5, NOTE_G5,
+  NOTE_A5, 0, NOTE_F5, NOTE_G5,
+  0, NOTE_E5, 0, NOTE_C5,
+  NOTE_D5, NOTE_B4, 0, 0
+};
+
+int marioDurations[] = {
+  150, 150, 150, 150,
+  150, 150, 150, 150,
+  150, 150, 150, 150,
+  150, 150, 150, 150,
+
+  150, 150, 150, 150,
+  150, 150, 150, 150,
+  150, 150, 150, 150,
+  150, 150, 150, 150,
+
+  150, 150, 150,
+  150, 150, 150, 150,
+  150, 150, 150, 150,
+  150, 150, 150, 150
+};
+
+int marioLength = sizeof(marioMelody) / sizeof(int);
+
+// 초음파 거리 측정 함수
+long getDistance(int trigPin, int echoPin) {
+  digitalWrite(trigPin, LOW);
+  delayMicroseconds(2);
+  digitalWrite(trigPin, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(trigPin, LOW);
+
+  long duration = pulseIn(echoPin, HIGH, 20000); // 타임아웃 20ms
+  if (duration == 0) return 999; // 측정 실패시 큰 값 반환
+  long distance = duration * 0.034 / 2;  // cm
+  return distance;
+}
+
+// 슈퍼마리오 멜로디 연주
+void playMario() {
+  for (int i = 0; i < marioLength; i++) {
+    int noteDuration = marioDurations[i];
+    if (marioMelody[i] == 0) {
+      noTone(BUZZER_PIN);
+    } else {
+      tone(BUZZER_PIN, marioMelody[i], noteDuration);
+    }
+    delay(noteDuration * 1.3);
+  }
+  noTone(BUZZER_PIN);
+}
+
+// MQTT 재연결
+void reconnect() {
+  while (!client.connected()) {
+    Serial.print("MQTT 연결 시도...");
+    if (client.connect("ArduinoWiFiClient")) {
+      Serial.println("연결됨");
+      client.subscribe(mqtt_topic_sub);
+    } else {
+      Serial.print("실패, rc=");
+      Serial.print(client.state());
+      Serial.println(" 5초 후 재시도");
+      delay(5000);
+    }
+  }
+}
+
+void setup() {
+  Serial.begin(9600);
+
+  // 초음파 핀 모드 설정
+  pinMode(TRIG1, OUTPUT);
+  pinMode(ECHO1, INPUT);
+  pinMode(TRIG2, OUTPUT);
+  pinMode(ECHO2, INPUT);
+
+  // 진동모터 + 버저 핀
+  pinMode(VIBRATION_MOTOR, OUTPUT);
+  pinMode(BUZZER_PIN, OUTPUT);
+  digitalWrite(VIBRATION_MOTOR, LOW);
+
+  Serial1.begin(RX_BAUD); // Nano 33 TX ↔ WiFi RX 연결
+  delay(2000);
+
+  // WiFi 연결
+  Serial.print("WiFi 연결 중: ");
+  Serial.println(ssid);
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(1000);
+    Serial.print(".");
+  }
+  Serial.println("\nWiFi 연결 성공!");
+  Serial.print("IP 주소: ");
+  Serial.println(WiFi.localIP());
+
+  // MQTT 설정
+  client.setServer(mqtt_server, mqtt_port);
+
+  Serial.println("HC-SR04 / Vibration Motor / Buzzer (Super Mario) 시작");
+  Serial.println("WiFi 보드 - 낙상 신호 수신 대기 중...");
+}
+
+void loop() {
+  if (!client.connected()) {
+    reconnect();
+  }
+  client.loop();
+
+  // 초음파 센서 값 읽기
+  long dist1 = getDistance(TRIG1, ECHO1);
+  long dist2 = getDistance(TRIG2, ECHO2);
+
+  Serial.print("센서1 거리: ");
+  Serial.print(dist1);
+  Serial.print(" cm | 센서2 거리: ");
+  Serial.print(dist2);
+  Serial.println(" cm");
+
+  // 주기적으로 거리값 MQTT 전송
+  unsigned long now = millis();
+  if (now - lastSendTime > sendInterval) {
+    lastSendTime = now;
+    char msg[100];
+    sprintf(msg, "{\\"sensor1\\":%ld, \\"sensor2\\":%ld}", dist1, dist2);
+    client.publish(mqtt_topic_pub, msg);
+    Serial.print("MQTT 전송: ");
+    Serial.println(msg);
+  }
+
+  // 낙상 신호 수신 처리
+  if (Serial1.available()) {
+    String data = Serial1.readStringUntil('\\n');
+    data.trim();
+    Serial.println(data);
+    if (data == "FALL") {
+      Serial.println(">>> 낙상 신호 수신됨!");
+      client.publish(mqtt_topic_pub, "{\\"event\\":\\"FALL\\"}");
+    }
+  }
+
+  // ===== 거리 조건으로 자동 제어 =====
+  if (dist1 < 20 || dist2 < 20) {
+    if (!vibrationOn) {
+      vibrationOn = true;
+      Serial.println("거리 < 20cm → 진동모터 ON (1초) + 마리오 테마");
+      digitalWrite(VIBRATION_MOTOR, HIGH);
+      delay(1000);
+      digitalWrite(VIBRATION_MOTOR, LOW);
+
+      // 즉시 MQTT 경고 전송
+      char alertMsg[100];
+      sprintf(alertMsg, "{\\"alert\\":\\"distance<20\\", \\"sensor1\\":%ld, \\"sensor2\\":%ld}", dist1, dist2);
+      client.publish(mqtt_topic_pub, alertMsg);
+      
+      playMario();
+    }
+  } else {
+    if (vibrationOn) {
+      vibrationOn = false;
+      Serial.println("거리 >= 20cm → 진동모터 OFF + 버저 OFF");
+      digitalWrite(VIBRATION_MOTOR, LOW);
+      noTone(BUZZER_PIN);
+    }
+  }
+
+  delay(300);
+}`;
+
+        // 코드 토글 기능
+        function toggleCodeDisplay() {
+            const codeToggle = document.getElementById('codeToggle');
+            const arduinoCodeDiv = document.getElementById('arduinoCode');
+            const codeContent = document.getElementById('codeContent');
+
+            if (codeToggle.checked) {
+                codeContent.textContent = arduinoCode;
+                arduinoCodeDiv.classList.add('show');
+            } else {
+                arduinoCodeDiv.classList.remove('show');
+            }
+        }
+
+        // 코드 복사 기능
+        function copyCode() {
+            const copyBtn = document.getElementById('copyBtn');
+            
+            navigator.clipboard.writeText(arduinoCode).then(() => {
+                copyBtn.textContent = '✅ 복사됨!';
+                copyBtn.classList.add('copied');
+                
+                setTimeout(() => {
+                    copyBtn.textContent = '📋 복사';
+                    copyBtn.classList.remove('copied');
+                }, 2000);
+            }).catch(err => {
+                console.error('복사 실패:', err);
+                copyBtn.textContent = '❌ 실패';
+                setTimeout(() => {
+                    copyBtn.textContent = '📋 복사';
+                }, 2000);
+            });
+        }
+
+        // Arduino Nano 33 BLE 코드
+        const nanoArduinoCode = `#include <Arduino_LSM9DS1.h>  // Nano 33 Sense Rev2 IMU 라이브러리
+
+#define THRESHOLD 4   // g 단위, 2.5g 이상 급격한 변화면 낙상으로 판단
+#define TX_BAUD 9600
+
+void setup() {
+  Serial.begin(9600);     // PC 모니터링용
+  Serial1.begin(TX_BAUD); // 다른 아두이노로 전송 (TX=Nano D1, RX=상대보드 RX핀)
+  
+  if (!IMU.begin()) {
+    Serial.println("IMU 초기화 실패!");
+    while (1);
+  }
+  Serial.println("IMU 시작 - 낙상 감지 대기 중...");
+}
+
+void loop() {
+  float x, y, z;
+
+  if (IMU.accelerationAvailable()) {
+    IMU.readAcceleration(x, y, z);
+
+    float magnitude = sqrt(x * x + y * y + z * z); // 가속도 크기 (g 단위)
+
+    if (magnitude > 3) {
+       Serial.println(magnitude);
+    }
+
+    if (magnitude > THRESHOLD) {
+      Serial.println("낙상 감지!");
+      Serial1.println("FALL");   // 다른 보드로 낙상 신호 전송
+      delay(1000);               // 중복 감지 방지
+    }
+  } 
+}`;
+
+        // 코드 토글 기능 (Nano 33 BLE)
+        function toggleNanoCodeDisplay() {
+            const nanoCodeToggle = document.getElementById('nanoCodeToggle');
+            const nanoArduinoCodeDiv = document.getElementById('nanoArduinoCode');
+            const nanoCodeContent = document.getElementById('nanoCodeContent');
+
+            if (nanoCodeToggle.checked) {
+                nanoCodeContent.textContent = nanoArduinoCode;
+                nanoArduinoCodeDiv.classList.add('show');
+            } else {
+                nanoArduinoCodeDiv.classList.remove('show');
+            }
+        }
+
+        // 코드 복사 기능 (Nano 33 BLE)
+        function copyNanoCode() {
+            const nanoCopyBtn = document.getElementById('nanoCopyBtn');
+            
+            navigator.clipboard.writeText(nanoArduinoCode).then(() => {
+                nanoCopyBtn.textContent = '✅ 복사됨!';
+                nanoCopyBtn.classList.add('copied');
+                
+                setTimeout(() => {
+                    nanoCopyBtn.textContent = '📋 복사';
+                    nanoCopyBtn.classList.remove('copied');
+                }, 2000);
+            }).catch(err => {
+                console.error('복사 실패:', err);
+                nanoCopyBtn.textContent = '❌ 실패';
+                setTimeout(() => {
+                    nanoCopyBtn.textContent = '📋 복사';
+                }, 2000);
+            });
+        }
+
+        // 스마트 지팡이 모니터링 코드 (JavaScript 부분)
+        const monitoringCode = `// 스마트 지팡이 모니터링 시스템 - JavaScript Core Functions
+
+// MQTT 연결 및 메시지 처리
+const MQTT_TOPIC_SUB = 'SC_pub';
+let client;
+let isConnected = false;
+
+// 음성 알림 제어 변수
+let lastSpeechTime = 0;
+let lastSensorSpeech = 0;
+const speechCooldown = 10000; // 10초 간격
+
+// 앱 초기화 함수
+function initializeApp() {
+    // DOM 요소들 초기화
+    connectionStatus = document.getElementById('connectionStatus');
+    distance1 = document.getElementById('distance1');
+    distance2 = document.getElementById('distance2');
+    status1 = document.getElementById('status1');
+    status2 = document.getElementById('status2');
+    safetyStatus = document.getElementById('safetyStatus');
+    fallStatus = document.getElementById('fallStatus');
+    obstacleStatus = document.getElementById('obstacleStatus');
+    lastUpdate = document.getElementById('lastUpdate');
+
+    // MQTT 연결 설정
+    const clientId = 'webClient_' + Math.random().toString(16).substr(2, 8);
+    const isHttps = location.protocol === 'https:';
+    const mqttUrl = isHttps ? 'wss://pubcode2.iptime.org:39002' : 'ws://pubcode2.iptime.org:39001';
+    
+    try {
+        client = mqtt.connect(mqttUrl, {
+            clientId: clientId,
+            clean: true,
+            keepalive: 30,
+            connectTimeout: 15 * 1000,
+            reconnectPeriod: 5000,
+            protocolVersion: 4
+        });
+        setupMQTTEvents();
+    } catch (error) {
+        console.error('MQTT 클라이언트 생성 실패:', error);
+        updateConnectionStatus(false, 'MQTT 연결 실패');
+    }
+}
+
+// MQTT 메시지 처리 함수
+function processMessage(data) {
+    console.log('처리 중인 메시지:', data);
+    
+    // 낙상 감지 체크
+    if (data.includes('"event":"FALL"') || data === 'FALL') {
+        handleFallDetection();
+        return;
+    }
+    
+    // JSON 형태 데이터 파싱
+    try {
+        const jsonData = JSON.parse(data);
+        if (jsonData.event === 'FALL') {
+            handleFallDetection();
+            return;
+        }
+        if (jsonData.sensor1 !== undefined && jsonData.sensor2 !== undefined) {
+            updateSensorDisplay(1, jsonData.sensor1);
+            updateSensorDisplay(2, jsonData.sensor2);
+            return;
+        }
+    } catch (e) {
+        // JSON이 아닌 경우 다른 파싱 방법 시도
+    }
+    
+    // 거리 데이터 파싱
+    if (data.includes('Distance Alert!')) {
+        handleDistanceAlert(data);
+        parseDistanceData(data);
+    } else if (data.includes('d1=') && data.includes('d2=')) {
+        parseDistanceData(data);
+    } else if (data.includes('센서1') && data.includes('센서2')) {
+        parseKoreanDistanceData(data);
+    }
+}
+
+// 음성 알림 함수 (Chrome 브라우저 호환)
+function speakMessage(message, priority = 'normal') {
+    const currentTime = Date.now();
+    
+    if (priority === 'high' || currentTime - lastSpeechTime > speechCooldown) {
+        if ('speechSynthesis' in window) {
+            try {
+                window.speechSynthesis.cancel();
+                
+                const utterance = new SpeechSynthesisUtterance(message);
+                const voices = window.speechSynthesis.getVoices();
+                const koreanVoice = voices.find(voice => 
+                    voice.lang.includes('ko') || voice.lang.includes('KR')
+                );
+                
+                if (koreanVoice) {
+                    utterance.voice = koreanVoice;
+                    utterance.lang = koreanVoice.lang;
+                } else {
+                    utterance.lang = 'ko-KR';
+                }
+                
+                utterance.rate = 0.9;
+                utterance.pitch = 1.0;
+                utterance.volume = 1.0;
+                
+                window.speechSynthesis.speak(utterance);
+                lastSpeechTime = currentTime;
+                
+            } catch (error) {
+                console.error('음성 합성 오류:', error);
+                showTextAlert(message);
+            }
+        } else {
+            showTextAlert(message);
+        }
+    }
+}
+
+// 낙상 감지 처리
+function handleFallDetection() {
+    fallStatus.textContent = '🚨 낙상 감지됨!';
+    fallStatus.className = 'alert-message alert-fall';
+    safetyStatus.textContent = '🚨 응급 상황 발생!';
+    safetyStatus.className = 'alert-message alert-fall';
+
+    speakMessage('경고! 낙상이 감지되었습니다. 응급 상황입니다.', 'high');
+
+    setTimeout(() => {
+        fallStatus.textContent = '정상 상태';
+        fallStatus.className = 'alert-message alert-normal';
+        updateSafetyStatus();
+        speakMessage('낙상 경고가 해제되었습니다.');
+    }, 5000);
+}
+
+// 센서 표시 업데이트
+function updateSensorDisplay(sensorNum, distance) {
+    console.log(\`센서\${sensorNum} 업데이트: \${distance}cm\`);
+    
+    if (sensorNum === 1) {
+        distance1.textContent = distance + ' cm';
+        updateSensorStatus(status1, distance);
+    } else if (sensorNum === 2) {
+        distance2.textContent = distance + ' cm';
+        updateSensorStatus(status2, distance);
+    }
+
+    // 장애물 감지 체크
+    if (distance < 20) {
+        triggerObstacleAlert(sensorNum, distance);
+    }
+}
+
+// 장애물 경고 트리거
+function triggerObstacleAlert(sensorNum, distance) {
+    obstacleStatus.textContent = \`⚠️ 센서\${sensorNum}에서 장애물 감지! (\${distance}cm)\`;
+    obstacleStatus.className = 'alert-message alert-obstacle';
+    safetyStatus.textContent = '⚠️ 주의 필요';
+    safetyStatus.className = 'alert-message alert-obstacle';
+
+    speakMessage(\`주의! 센서 \${sensorNum}에서 \${distance}센티미터 거리에 장애물이 감지되었습니다.\`, 'high');
+
+    setTimeout(() => {
+        if (!obstacleStatus.className.includes('alert-obstacle')) return;
+        obstacleStatus.textContent = '경로 안전';
+        obstacleStatus.className = 'alert-message alert-normal';
+        updateSafetyStatus();
+        speakMessage('장애물이 해제되었습니다. 경로가 안전합니다.');
+    }, 3000);
+}`;
+
+        // HTML 전체 코드 가져오기 함수
+        function getFullHtmlCode() {
+            return document.documentElement.outerHTML;
+        }
+
+        // 모니터링 코드 토글 기능
+        function toggleMonitoringCodeDisplay() {
+            const monitoringCodeToggle = document.getElementById('monitoringCodeToggle');
+            const monitoringCodeDiv = document.getElementById('monitoringCode');
+            const monitoringCodeContent = document.getElementById('monitoringCodeContent');
+
+            if (monitoringCodeToggle.checked) {
+                monitoringCodeContent.textContent = monitoringCode;
+                monitoringCodeDiv.classList.add('show');
+            } else {
+                monitoringCodeDiv.classList.remove('show');
+            }
+        }
+
+        // 모니터링 코드 복사 기능
+        function copyMonitoringCode() {
+            const monitoringCopyBtn = document.getElementById('monitoringCopyBtn');
+            
+            navigator.clipboard.writeText(monitoringCode).then(() => {
+                monitoringCopyBtn.textContent = '✅ 복사됨!';
+                monitoringCopyBtn.classList.add('copied');
+                
+                setTimeout(() => {
+                    monitoringCopyBtn.textContent = '📋 복사';
+                    monitoringCopyBtn.classList.remove('copied');
+                }, 2000);
+            }).catch(err => {
+                console.error('복사 실패:', err);
+                monitoringCopyBtn.textContent = '❌ 실패';
+                setTimeout(() => {
+                    monitoringCopyBtn.textContent = '📋 복사';
+                }, 2000);
+            });
+        }
+
+        // HTML 코드 토글 기능
+        function toggleHtmlCodeDisplay() {
+            const htmlCodeToggle = document.getElementById('htmlCodeToggle');
+            const htmlCodeDiv = document.getElementById('htmlCode');
+            const htmlCodeContent = document.getElementById('htmlCodeContent');
+
+            if (htmlCodeToggle.checked) {
+                const fullHtmlCode = getFullHtmlCode();
+                htmlCodeContent.textContent = fullHtmlCode;
+                htmlCodeDiv.classList.add('show');
+            } else {
+                htmlCodeDiv.classList.remove('show');
+            }
+        }
+
+        // HTML 코드 복사 기능
+        function copyHtmlCode() {
+            const htmlCopyBtn = document.getElementById('htmlCopyBtn');
+            const fullHtmlCode = getFullHtmlCode();
+            
+            navigator.clipboard.writeText(fullHtmlCode).then(() => {
+                htmlCopyBtn.textContent = '✅ 복사됨!';
+                htmlCopyBtn.classList.add('copied');
+                
+                setTimeout(() => {
+                    htmlCopyBtn.textContent = '📋 복사';
+                    htmlCopyBtn.classList.remove('copied');
+                }, 2000);
+            }).catch(err => {
+                console.error('복사 실패:', err);
+                htmlCopyBtn.textContent = '❌ 실패';
+                setTimeout(() => {
+                    htmlCopyBtn.textContent = '📋 복사';
+                }, 2000);
+            });
+        }
+
+        // 음성 테스트 함수
+        function testSpeech() {
+            console.log('🎤 음성 테스트 시작');
+            speakMessage('스마트 지팡이 음성 테스트입니다. 음성이 정상적으로 작동하고 있습니다.', 'high');
+        }
+
+        // 페이지 로드 시 초기화
+        window.addEventListener('load', function() {
+            // 앱 초기화 (DOM 요소 및 MQTT 연결)
+            initializeApp();
+            
+            // 음성 시스템 초기화
+            initializeSpeech();
+            
+            // 이벤트 리스너 등록
+            document.getElementById('codeToggle').addEventListener('change', toggleCodeDisplay);
+            document.getElementById('copyBtn').addEventListener('click', copyCode);
+            document.getElementById('nanoCodeToggle').addEventListener('change', toggleNanoCodeDisplay);
+            document.getElementById('nanoCopyBtn').addEventListener('click', copyNanoCode);
+            document.getElementById('monitoringCodeToggle').addEventListener('change', toggleMonitoringCodeDisplay);
+            document.getElementById('monitoringCopyBtn').addEventListener('click', copyMonitoringCode);
+            document.getElementById('htmlCodeToggle').addEventListener('change', toggleHtmlCodeDisplay);
+            document.getElementById('htmlCopyBtn').addEventListener('click', copyHtmlCode);
+        });
+    </script>
+
+</body></html>
