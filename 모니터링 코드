@@ -1,0 +1,174 @@
+// 스마트 지팡이 모니터링 시스템 - JavaScript Core Functions
+
+// MQTT 연결 및 메시지 처리
+const MQTT_TOPIC_SUB = 'SC_pub';
+let client;
+let isConnected = false;
+
+// 음성 알림 제어 변수
+let lastSpeechTime = 0;
+let lastSensorSpeech = 0;
+const speechCooldown = 10000; // 10초 간격
+
+// 앱 초기화 함수
+function initializeApp() {
+    // DOM 요소들 초기화
+    connectionStatus = document.getElementById('connectionStatus');
+    distance1 = document.getElementById('distance1');
+    distance2 = document.getElementById('distance2');
+    status1 = document.getElementById('status1');
+    status2 = document.getElementById('status2');
+    safetyStatus = document.getElementById('safetyStatus');
+    fallStatus = document.getElementById('fallStatus');
+    obstacleStatus = document.getElementById('obstacleStatus');
+    lastUpdate = document.getElementById('lastUpdate');
+
+    // MQTT 연결 설정
+    const clientId = 'webClient_' + Math.random().toString(16).substr(2, 8);
+    const isHttps = location.protocol === 'https:';
+    const mqttUrl = isHttps ? 'wss://pubcode2.iptime.org:39002' : 'ws://pubcode2.iptime.org:39001';
+    
+    try {
+        client = mqtt.connect(mqttUrl, {
+            clientId: clientId,
+            clean: true,
+            keepalive: 30,
+            connectTimeout: 15 * 1000,
+            reconnectPeriod: 5000,
+            protocolVersion: 4
+        });
+        setupMQTTEvents();
+    } catch (error) {
+        console.error('MQTT 클라이언트 생성 실패:', error);
+        updateConnectionStatus(false, 'MQTT 연결 실패');
+    }
+}
+
+// MQTT 메시지 처리 함수
+function processMessage(data) {
+    console.log('처리 중인 메시지:', data);
+    
+    // 낙상 감지 체크
+    if (data.includes('"event":"FALL"') || data === 'FALL') {
+        handleFallDetection();
+        return;
+    }
+    
+    // JSON 형태 데이터 파싱
+    try {
+        const jsonData = JSON.parse(data);
+        if (jsonData.event === 'FALL') {
+            handleFallDetection();
+            return;
+        }
+        if (jsonData.sensor1 !== undefined && jsonData.sensor2 !== undefined) {
+            updateSensorDisplay(1, jsonData.sensor1);
+            updateSensorDisplay(2, jsonData.sensor2);
+            return;
+        }
+    } catch (e) {
+        // JSON이 아닌 경우 다른 파싱 방법 시도
+    }
+    
+    // 거리 데이터 파싱
+    if (data.includes('Distance Alert!')) {
+        handleDistanceAlert(data);
+        parseDistanceData(data);
+    } else if (data.includes('d1=') && data.includes('d2=')) {
+        parseDistanceData(data);
+    } else if (data.includes('센서1') && data.includes('센서2')) {
+        parseKoreanDistanceData(data);
+    }
+}
+
+// 음성 알림 함수 (Chrome 브라우저 호환)
+function speakMessage(message, priority = 'normal') {
+    const currentTime = Date.now();
+    
+    if (priority === 'high' || currentTime - lastSpeechTime > speechCooldown) {
+        if ('speechSynthesis' in window) {
+            try {
+                window.speechSynthesis.cancel();
+                
+                const utterance = new SpeechSynthesisUtterance(message);
+                const voices = window.speechSynthesis.getVoices();
+                const koreanVoice = voices.find(voice => 
+                    voice.lang.includes('ko') || voice.lang.includes('KR')
+                );
+                
+                if (koreanVoice) {
+                    utterance.voice = koreanVoice;
+                    utterance.lang = koreanVoice.lang;
+                } else {
+                    utterance.lang = 'ko-KR';
+                }
+                
+                utterance.rate = 0.9;
+                utterance.pitch = 1.0;
+                utterance.volume = 1.0;
+                
+                window.speechSynthesis.speak(utterance);
+                lastSpeechTime = currentTime;
+                
+            } catch (error) {
+                console.error('음성 합성 오류:', error);
+                showTextAlert(message);
+            }
+        } else {
+            showTextAlert(message);
+        }
+    }
+}
+
+// 낙상 감지 처리
+function handleFallDetection() {
+    fallStatus.textContent = '🚨 낙상 감지됨!';
+    fallStatus.className = 'alert-message alert-fall';
+    safetyStatus.textContent = '🚨 응급 상황 발생!';
+    safetyStatus.className = 'alert-message alert-fall';
+
+    speakMessage('경고! 낙상이 감지되었습니다. 응급 상황입니다.', 'high');
+
+    setTimeout(() => {
+        fallStatus.textContent = '정상 상태';
+        fallStatus.className = 'alert-message alert-normal';
+        updateSafetyStatus();
+        speakMessage('낙상 경고가 해제되었습니다.');
+    }, 5000);
+}
+
+// 센서 표시 업데이트
+function updateSensorDisplay(sensorNum, distance) {
+    console.log(`센서${sensorNum} 업데이트: ${distance}cm`);
+    
+    if (sensorNum === 1) {
+        distance1.textContent = distance + ' cm';
+        updateSensorStatus(status1, distance);
+    } else if (sensorNum === 2) {
+        distance2.textContent = distance + ' cm';
+        updateSensorStatus(status2, distance);
+    }
+
+    // 장애물 감지 체크
+    if (distance < 20) {
+        triggerObstacleAlert(sensorNum, distance);
+    }
+}
+
+// 장애물 경고 트리거
+function triggerObstacleAlert(sensorNum, distance) {
+    obstacleStatus.textContent = `⚠️ 센서${sensorNum}에서 장애물 감지! (${distance}cm)`;
+    obstacleStatus.className = 'alert-message alert-obstacle';
+    safetyStatus.textContent = '⚠️ 주의 필요';
+    safetyStatus.className = 'alert-message alert-obstacle';
+
+    speakMessage(`주의! 센서 ${sensorNum}에서 ${distance}센티미터 거리에 장애물이 감지되었습니다.`, 'high');
+
+    setTimeout(() => {
+        if (!obstacleStatus.className.includes('alert-obstacle')) return;
+        obstacleStatus.textContent = '경로 안전';
+        obstacleStatus.className = 'alert-message alert-normal';
+        updateSafetyStatus();
+        speakMessage('장애물이 해제되었습니다. 경로가 안전합니다.');
+    }, 3000);
+}
